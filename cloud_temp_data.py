@@ -9,20 +9,24 @@ import pytz
 from datetime import datetime, timedelta
 import wget
 import json
-sys.path.insert(1, './scripts')
-from helper_functions import *
 from PIL import Image, ImageOps
 import s3fs
-from helper_functions import *
 from pyorbital import astronomy
 from satpy import Scene
 from pyresample import create_area_def
 import cartopy.crs as ccrs
 
-data_dir = './data/'
+def get_dt_str(dt):
+    hr = dt.hour
+    hr = str(hr).zfill(2)
+    tt = dt.timetuple()
+    dn = tt.tm_yday
+    dn = str(dn).zfill(3)
+    yr = dt.year
+    return hr, dn, yr
 
 # get list of datetimes when the solar zenith angle for far east and west boundaries are less than 50 deg
-def get_sun_up_dts(dt,min_sza=50, west_lon=-125, west_lat=40, east_lon=-110, east_lat=40):
+def get_sun_up_dts(dt,min_sza=70, west_lon=-125, west_lat=40, east_lon=-110, east_lat=40):
     dt = dt.replace(hour=0, minute=0)
     day_dts = [dt+timedelta(hours=t) for t in range(24)]
     szas_west = np.asarray([astronomy.sun_zenith_angle(day_dt, west_lon, west_lat) for day_dt in day_dts])
@@ -57,8 +61,6 @@ def get_additional_band_file(band, fn_str, fns):
 def get_closest_file(fns, dt, sat_num, bands):
     use_fns = []
     band_init = 'C'+str(bands[0]).zfill(2)
-
-
     best_band_fn, fn_str = get_first_closest_file(band_init, fns, dt, sat_num)
     use_fns.append(best_band_fn)
     for band in bands:
@@ -66,7 +68,6 @@ def get_closest_file(fns, dt, sat_num, bands):
         best_band_fn = get_additional_band_file(band, fn_str, fns)
         use_fns.append(best_band_fn)
     return use_fns
-
 
 def get_filelist(dt, fs, sat_num, product, scope, bands):
     hr, dn, yr = get_dt_str(dt)
@@ -123,7 +124,6 @@ def download_goes(dt, sat_num='18', product='ABI-L1b-Rad', scope='F',bands=list(
         return file_locs
     else:
         print('ERROR NO FILES FOUND FOR TIME REQUESTED: ', dt)
-
 
 def get_proj():
     lcc_proj = ccrs.LambertConformal(central_longitude=262.5,

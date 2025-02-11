@@ -169,6 +169,7 @@ def get_one_hot(binary, n_cats=4):
 
 def split_and_save(full_image, full_truth, full_coords, fn_head, img_size=1024):
     yr = fn_head.split('s')[1][0:4]
+    dn = fn_head.split('s')[1][4:7]
     n_row = int(full_image.shape[0]/img_size)
     n_col = int(full_image.shape[1]/img_size)
     full_image = full_image[0:int(n_row*img_size),0:int(n_col*img_size)][:]
@@ -184,47 +185,55 @@ def split_and_save(full_image, full_truth, full_coords, fn_head, img_size=1024):
             center_lon = np.round(coords[int(img_size/2)][int(img_size/2)][1], 2)
             fn = '{}_{}_{}.tif'.format(fn_head, center_lat, center_lon)
             save_loc = "./cloud_data/"
-            skimage.io.imsave('{}data/{}/{}'.format(save_loc, yr, fn), data)
-            skimage.io.imsave('{}truth/{}/{}'.format(save_loc, yr, fn), truth)
+            skimage.io.imsave('{}data/{}/{}/{}'.format(save_loc, yr, dn, fn), data)
+            skimage.io.imsave('{}truth/{}/{}/{}'.format(save_loc, yr, dn, fn), truth)
             fn_list.append(fn)
     return fn_list
 
 years = ['2023', '2024']
-dns = np.linspace(1,365, 365)
+dns = [str(x).zfill(3) for x in range(1,366)]
 for yr in years:
     for dn in dns:
-        dt_str = '{}{}'.format(yr, str(int(dn)).zfill(3))
-        print(dt_str)
-        print(datetime.strptime(dt_str, '%Y%j'))
-        day_dt = pytz.utc.localize(datetime.strptime(dt_str, '%Y%j')) # convert to datetime object
+        yr_dn = '{}{}'.format(yr, dn)
+        day_dt = pytz.utc.localize(datetime.strptime(yr_dn, '%Y%j')) # convert to datetime object
         dts = get_sun_up_dts(day_dt)
         print(dts)
         for dt in dts:
-            sat_fns = download_goes(dt, sat_num='18', bands=list(range(14,17)))
-            fn_head = sat_fns[0].split('C14_')[-1].split('.')[0].split('_e')[0]
-            x0 = -2.4e6
-            y0 = -2.112e6
-            x1 = 1.696e6
-            y1 = 1.984e6
-            extent = [x0, y0, x1, y1]
-            bands = ['C14', 'C15', 'C16']
-            res = 2000 # 2km resolution
-            scn = get_scn(sat_fns[:-1], bands, extent, res, print_info=True) # get satpy scn object
-            conus_crs = scn['C14'].attrs['area'].to_cartopy_crs() # the crs object will have the area extent for plotting
-            mask = ['TEMP']
-            temp_scn = get_scn([sat_fns[-1]], mask, extent, res, print_info=True, reader='abi_l2_nc') # get satpy scn object
+            try:
+                sat_fns = download_goes(dt, sat_num='18', bands=list(range(14,17)))
+                sat_fns = list(set(sat_fns))
+                sat_fns.sort()
+                fn_head = sat_fns[0].split('C14_')[-1].split('.')[0].split('_e')[0]
+                truth_fns = glob('./cloud_data/truth/{}/{}/*'.format(yr, dn))
 
-            temp = temp_scn['TEMP'].compute().data
-            temp[np.isnan(temp)] = 0
-            temp[(temp<233) & (temp>0)]= 3 # high
-            temp[(temp>=233) & (temp<=253)] = 2 # mid
-            temp[(temp>253)] = 1 # low
-            temp = np.array(temp, dtype=np.int8)
-            one_hot_mask = get_one_hot(temp) # from the scene object, extract RGB data for plotting
+                if not any(fn_head in truth_fn for truth_fn in truth_fns):
 
-            IR = get_IR(scn, bands) # from the scene object, extract RGB data for plotting
+                    x0 = -2.4e6
+                    y0 = -2.112e6
+                    x1 = 1.696e6
+                    y1 = 1.984e6
+                    extent = [x0, y0, x1, y1]
+                    bands = ['C14', 'C15', 'C16']
+                    res = 2000 # 2km resolution
+                    scn = get_scn(sat_fns[:-1], bands, extent, res, print_info=True) # get satpy scn object
+                    conus_crs = scn['C14'].attrs['area'].to_cartopy_crs() # the crs object will have the area extent for plotting
+                    mask = ['TEMP']
+                    temp_scn = get_scn([sat_fns[-1]], mask, extent, res, print_info=True, reader='abi_l2_nc') # get satpy scn object
 
-            lon, lat = scn['C14'].attrs['area'].get_lonlats()
-            lat_lon = np.dstack([lat, lon])
-            tif_fns = split_and_save(IR, one_hot_mask, lat_lon, fn_head)
-            x = input('stop!')
+                    temp = temp_scn['TEMP'].compute().data
+                    temp[np.isnan(temp)] = 0
+                    temp[(temp<233) & (temp>0)]= 3 # high
+                    temp[(temp>=233) & (temp<=253)] = 2 # mid
+                    temp[(temp>253)] = 1 # low
+                    temp = np.array(temp, dtype=np.int8)
+                    one_hot_mask = get_one_hot(temp) # from the scene object, extract RGB data for plotting
+
+                    IR = get_IR(scn, bands) # from the scene object, extract RGB data for plotting
+
+                    lon, lat = scn['C14'].attrs['area'].get_lonlats()
+                    lat_lon = np.dstack([lat, lon])
+                    tif_fns = split_and_save(IR, one_hot_mask, lat_lon, fn_head)
+                for sat_fn in sat_fns:
+                    os.remove(sat_fn)
+            except:
+                print("SOMETHING WENT WRONGGG")

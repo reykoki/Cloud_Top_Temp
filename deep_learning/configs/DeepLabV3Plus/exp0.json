@@ -1,0 +1,10 @@
+{
+    "architecture":"DeepLabV3Plus",
+    "encoder": "timm-efficientnet-b2",
+    "lr": 1e-2,
+    "batch_size": 4,
+    "num_workers": 4,
+    "job_name": "PL_DLV3_exp0",
+    "datapointer": "./dataset_pointers/cloud.pkl",
+    "encoder_weights": "None"
+}

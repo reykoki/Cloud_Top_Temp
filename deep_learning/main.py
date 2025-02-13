@@ -1,4 +1,5 @@
 import pickle
+import gc
 import os
 import glob
 import time
@@ -8,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
-from SmokeDataset import SmokeDataset
+from CloudDataset import CloudDataset
 from torchvision import transforms
 import segmentation_models_pytorch as smp
 
@@ -144,15 +145,18 @@ def train_model(train_dataloader, model, criterion, optimizer, rank):
         batch_data, batch_labels = batch_data.to(rank, dtype=torch.float32, non_blocking=True), batch_labels.to(rank, dtype=torch.float32, non_blocking=True)
 
         preds = model(batch_data)
-        high_loss = criterion(preds[:,0,:,:], batch_labels[:,0,:,:]).to(rank)
-        med_loss = criterion(preds[:,1,:,:], batch_labels[:,1,:,:]).to(rank)
-        low_loss = criterion(preds[:,2,:,:], batch_labels[:,2,:,:]).to(rank)
-        loss = 6*high_loss + 4*med_loss + low_loss
+        #high_loss = criterion(preds[:,0,:,:], batch_labels[:,0,:,:]).to(rank)
+        #med_loss = criterion(preds[:,1,:,:], batch_labels[:,1,:,:]).to(rank)
+        #low_loss = criterion(preds[:,2,:,:], batch_labels[:,2,:,:]).to(rank)
+        loss = criterion(preds, batch_labels).to(rank)
+        #loss = 6*high_loss + 4*med_loss + low_loss
         total_loss += loss.item()
-
         # compute gradient and do step
         loss.backward()
         optimizer.step()
+        gc.collect()
+        torch.cuda.empty_cache()
+
 
     epoch_loss = total_loss/len(train_dataloader)
     if rank==0:
@@ -161,9 +165,9 @@ def train_model(train_dataloader, model, criterion, optimizer, rank):
 
 def prepare_dataloader(rank, world_size, data_dict, cat, batch_size, pin_memory=True, num_workers=4, is_train=True):
     data_transforms = transforms.Compose([transforms.ToTensor()])
-    dataset = SmokeDataset(data_dict[cat], data_transforms)
+    dataset = CloudDataset(data_dict[cat], data_transforms)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=is_train, drop_last=True)
-    dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, shuffle=False, sampler=sampler)
+    dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=True, shuffle=False, sampler=sampler)
     return dataloader
 
 def main(rank, world_size, config_fn):
@@ -256,7 +260,7 @@ def main(rank, world_size, config_fn):
 
 if __name__ == '__main__':
     #world_size = 8 # num gpus
-    world_size = 1 # num gpus
+    world_size = 4 # num gpus
     if len(sys.argv) < 2:
         print('\n YOU DIDNT SPECIFY EXPERIMENT NUMBER! ', flush=True)
     config_fn = str(sys.argv[1])

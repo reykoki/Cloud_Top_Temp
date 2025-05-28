@@ -26,13 +26,13 @@ def get_dt_str(dt):
     return hr, dn, yr
 
 # get list of datetimes when the solar zenith angle for far east and west boundaries are less than 50 deg
-def get_sun_up_dts(dt,min_sza=70, west_lon=-125, west_lat=40, east_lon=-110, east_lat=40):
+def get_sun_up_dts(dt,max_sza=70, west_lon=-125, west_lat=40, east_lon=-110, east_lat=40):
     dt = dt.replace(hour=0, minute=0)
     day_dts = [dt+timedelta(hours=t) for t in range(24)]
     szas_west = np.asarray([astronomy.sun_zenith_angle(day_dt, west_lon, west_lat) for day_dt in day_dts])
     szas_east = np.asarray([astronomy.sun_zenith_angle(day_dt, east_lon, east_lat) for day_dt in day_dts])
-    idx_east = list(np.where(szas_east<min_sza)[0])
-    idx_west = list(np.where(szas_west<min_sza)[0])
+    idx_east = list(np.where(szas_east<max_sza)[0])
+    idx_west = list(np.where(szas_west<max_sza)[0])
     overlap = list(set(list(idx_east)) & set(list(idx_west)))
     sun_up_dts = [day_dts[idx] for idx in overlap]
     return sun_up_dts
@@ -154,11 +154,13 @@ def normalize(data):
 
 def get_IR(scn,bands):
     C14 = scn[bands[0]].compute().data
+    C14 = normalize(C14)
     C15 = scn[bands[1]].compute().data
+    C15 = normalize(C15)
     C16 = scn[bands[2]].compute().data
+    C16 = normalize(C16)
     IR = np.dstack([C14, C15, C16])
     IR[np.isnan(IR)] = 0
-    IR = normalize(IR)
     return IR
 
 def get_one_hot(binary, n_cats=4):

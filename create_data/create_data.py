@@ -53,7 +53,7 @@ def get_IR(scn,bands):
     IR[np.isnan(IR)] = 0
     return IR
 
-def get_temp(temp_scn)
+def get_temp(temp_scn):
     temp = temp_scn['TEMP'].compute().data
     temp[np.isnan(temp)] = 0
     temp[(temp<233) & (temp>0)]= 3 # high
@@ -86,7 +86,7 @@ def split_and_save(full_image, full_truth, full_coords, fn_head, img_size=1024):
             center_lat = np.round(coords[int(img_size/2)][int(img_size/2)][0], 2)
             center_lon = np.round(coords[int(img_size/2)][int(img_size/2)][1], 2)
             fn = '{}_{}_{}.tif'.format(fn_head, center_lat, center_lon)
-            save_loc = "./cloud_data/"
+            save_loc = "/scratch1/RDARCH/rda-ghpcs/Rey.Koki/Cloud_Top_Temp/cloud_data/"
             skimage.io.imsave('{}data/{}/{}/{}'.format(save_loc, yr, dn, fn), data)
             skimage.io.imsave('{}truth/{}/{}/{}'.format(save_loc, yr, dn, fn), truth)
             fn_list.append(fn)

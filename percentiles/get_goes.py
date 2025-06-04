@@ -1,4 +1,5 @@
 import os
+import random
 from datetime import datetime
 import pytz
 from datetime import timedelta
@@ -25,30 +26,6 @@ def get_file_locations(use_fns):
             print('{} doesnt exist'.format(fn_dl_loc))
     return file_locs
 
-def get_closest_file(fns, best_time, sat_num):
-    diff = timedelta(days=100)
-    use_fns = []
-    for fn in fns:
-        starts = []
-        if 'C14' in fn:
-            s_e = fn.split('_')[3:5]
-            start = s_e[0]
-            end = s_e[1][0:11]
-            C15_fn = 'C15_G{}_{}_{}'.format(sat_num, start, end)
-            C16_fn = 'C16_G{}_{}_{}'.format(sat_num, start, end)
-            for f in fns:
-                if C15_fn in f:
-                   C15_fn = f
-                elif C16_fn in f:
-                   C16_fn = f
-            if 'nc' in C15_fn and 'nc' in C16_fn:
-                start = s_e[0][1:-3]
-                s_dt = pytz.utc.localize(datetime.strptime(start, '%Y%j%H%M'))
-                if diff > abs(s_dt - best_time):
-                    diff = abs(s_dt - best_time)
-                    use_fns = [fn, C15_fn, C16_fn]
-    return use_fns
-
 def get_mode(dt):
     M3_to_M6 = pytz.utc.localize(datetime(2019, 4, 1, 0, 0)) # April 2019 switch from Mode 3 to Mode 6 (every 15 to 10 mins)
     if dt < M3_to_M6:
@@ -67,66 +44,19 @@ def get_goes_west(sat_num, dt):
         sat_num = '16'
     return sat_num
 
-def diagnose_filelist(curr_time, mode, sat_num, yr, dn, hr, mn):
-    print('need diagnosis')
-
-    diff = timedelta(minutes=10)
-    #C14_prefix = 'ABI-L1b-RadC/{}/{}/{}/OR_ABI-L1b-RadC-{}C14_G{}_s{}{}{}'.format(yr, dn, hr, mode, sat_num, yr, dn, hr)
-    #print(C14_prefix)
-    #C14_filelist = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=C14_prefix)
-    #print(C14_filelist)
-    use_entry = None
-    #if C14_filelist == 0:
-    if mode == 'M3':
-        mode2 = 'M6'
-    else:
-        mode2 = 'M3'
-    C14_prefix = 'ABI-L1b-RadF/{}/{}/{}/OR_ABI-L1b-RadF-{}C14_G{}_s{}{}{}'.format(yr, dn, hr, mode2, sat_num, yr, dn, hr, mn)
-    C14_filelist = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=C14_prefix)
-    G17_end_dt = pytz.utc.localize(datetime(2023, 1, 10, 0, 0))
-    if C14_filelist['KeyCount'] == 0 and sat_num == '18' and curr_time < G17_end_dt:
-        sat_num = '17'
-        C14_prefix = 'ABI-L1b-RadF/{}/{}/{}/OR_ABI-L1b-RadF-{}C14_G{}_s{}{}{}'.format(yr, dn, hr, mode2, sat_num, yr, dn, hr)
-        C14_filelist = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=C14_prefix)
-
-    if C14_filelist['KeyCount'] == 0:
-        return None, None
-    for entry in C14_filelist['Contents']:
-        start = entry['Key'].split('_')[3:5][0][1:-3]
-        s_dt = pytz.utc.localize(datetime.strptime(start, '%Y%j%H%M'))
-        if diff > abs(s_dt - curr_time):
-            diff = abs(s_dt - curr_time)
-            use_entry = entry['Key']
-    return use_entry, C14_prefix
-
-def get_GOES_file_loc(curr_time, mode, sat_num):
+def get_GOES_file_loc(curr_time, mode, sat_num, band):
     yr = curr_time.year
     dn = curr_time.strftime('%j')
     hr = curr_time.hour
     hr = str(hr).zfill(2)
-    mn = curr_time.minute
-    mn = str(mn).zfill(2)
-    C14_prefix = 'ABI-L1b-RadF/{}/{}/{}/OR_ABI-L1b-RadF-{}C14_G{}_s{}{}{}{}'.format(yr, dn, hr, mode, sat_num, yr, dn, hr, mn)
-    C14_filelist = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=C14_prefix)
-    if C14_filelist['KeyCount'] != 1:
-        C14_fn, C14_prefix = diagnose_filelist(curr_time, mode, sat_num, yr, dn, hr, mn)
-    else:
-        C14_fn = C14_filelist['Contents'][0]['Key']
-    if C14_fn:
-        C15_prefix = C14_prefix.replace('C14', 'C15')
-        C16_prefix = C14_prefix.replace('C14', 'C16')
-        CTT_prefix = 'ABI-L2-ACHTF/{}/{}/{}/OR_ABI-L2-ACHTF-{}_G{}_s{}{}{}{}'.format(yr, dn, hr, mode, sat_num, yr, dn, hr, mn)
-        try:
-            C15_fn = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=C15_prefix)['Contents'][0]['Key']
-            C16_fn = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=C16_prefix)['Contents'][0]['Key']
-            CTT_fn = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=CTT_prefix)['Contents'][0]['Key']
-            return [C14_fn, C15_fn, C16_fn, CTT_fn]
-        except Exception as e:
-            print('could not find accomanying files for: {}'.format(C14_fn))
-            print(e)
-            return []
+    band_prefix = 'ABI-L1b-RadF/{}/{}/{}/OR_ABI-L1b-RadF-{}{}_G{}_s{}{}{}'.format(yr, dn, hr, mode, band, sat_num, yr, dn, hr)
+    band_filelist = client.list_objects_v2(Bucket='noaa-goes{}'.format(sat_num), Prefix=band_prefix)
+    if band_filelist['KeyCount'] >= 1:
+        idx = random.randint(0,band_filelist['KeyCount'])
+        band_fn = band_filelist['Contents'][idx-1]['Key']
+        return [band_fn]
 
-def get_sat_files(time_list, sat_num):
+def get_sat_files(time_list, sat_num, band='C14'):
 
     all_fn_heads = []
     all_sat_fns = []
@@ -136,10 +66,10 @@ def get_sat_files(time_list, sat_num):
     mode = get_mode(time_list[0])
 
     for curr_time in time_list:
-        sat_fns = get_GOES_file_loc(curr_time, mode, sat_num)
+        sat_fns = get_GOES_file_loc(curr_time, mode, sat_num, band)
         print(sat_fns)
         if sat_fns:
-            fn_head = sat_fns[0].split('C14_')[-1].split('.')[0].split('_e2')[0]
+            fn_head = sat_fns[0].split('{}_'.format(band))[-1].split('.')[0].split('_e2')[0]
             all_fn_heads.append(fn_head)
             all_sat_fns.append(sat_fns)
 

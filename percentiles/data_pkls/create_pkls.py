@@ -17,12 +17,10 @@ for month in range(start_month, end_month + 1):
                   for i in range((next_month - first_day).days)]
 
     # Dictionary with Julian days as keys
-    #month_dict = {f"{d:03d}": [] for d in month_days}
     month_dict = {'{0:03d}'.format(d): [] for d in month_days}
 
-
     # Save to pickle with unpadded month number
-    filename = '{}_{}_data.pkl'.format(month, band)
+    filename = '{}_{}_data.pkl'.format(band, month)
     with open(filename, "wb") as f:
         pickle.dump(month_dict, f)
 print("Pickle files saved for months {} through {}.".format(start_month, end_month))

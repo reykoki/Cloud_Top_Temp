@@ -11,7 +11,7 @@ global client
 client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 
 def get_goes_dl_loc(yr, dn):
-    goes_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
+    goes_dir = './GOES/'
     global goes_dl_loc
     goes_dl_loc = '{}{}/{}/'.format(goes_dir, yr, dn)
     return goes_dl_loc

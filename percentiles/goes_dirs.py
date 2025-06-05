@@ -2,8 +2,7 @@ import os
 import glob
 
 
-root_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
-root_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES_not_PL/'
+root_dir = './GOES/'
 yrs = [ '2018/', '2019/', '2020/', '2021/', '2022/', '2023/', '2024/']
 dns = [str(x).zfill(3) for x in range(1,366)]
 

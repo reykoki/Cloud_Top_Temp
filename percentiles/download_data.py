@@ -1,6 +1,7 @@
 import shutil
-from pyorbital import astronomy
 from multiprocessing import Pool
+import matplotlib
+matplotlib.use("Agg")
 import pickle
 import cartopy.crs as ccrs
 import glob
@@ -18,22 +19,19 @@ import cartopy.crs as ccrs
 from pyresample import create_area_def
 from satpy import Scene
 from PIL import Image, ImageOps
-import os
 import skimage
 import shutil
 import wget
 from datetime import timedelta
 from get_goes import get_sat_files, get_goes_dl_loc, get_file_locations, download_sat_files, check_goes_exists
 
-global full_data_dir
-full_data_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/cloud_data/'
 global goes_dir
-goes_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
+goes_dir = './GOES/'
 
 # get list of datetimes (24 dts per day) chosen random selection per hour
 def get_day_dts(dt):
     dt = dt.replace(hour=0, minute=0)
-    day_dts = [dt+timedelta(hours=t) for t in range(5)]
+    day_dts = [dt+timedelta(hours=t) for t in range(24)]
     return day_dts
 
 def GOES_doesnt_already_exists(goes_dl_loc, fn_head):
@@ -42,7 +40,7 @@ def GOES_doesnt_already_exists(goes_dl_loc, fn_head):
     start_scan = fn_head_parts[1]
     file_list = glob.glob('{}{}*_{}_*.nc'.format(goes_dl_loc, sat_num, start_scan))
     if len(file_list) > 0:
-        print("FILE THAT ALREADY EXIST:", file_list[0], flush=True)
+        print("FILE THAT ALREADY EXIST:", file_list[0])
         return False
     return True
 
@@ -84,16 +82,17 @@ def get_scn(fns, to_load, res=2000, reader='abi_l1b'):
     new_scn = scn.resample(my_area) # resamples datasets and resturns a new scene object
     return new_scn
 
-def save_reflectances(day_sat_files, dn, season_dict, band, goes_dl_loc):
+def save_reflectances(day_sat_files, dn, month_dict, band, goes_dl_loc):
     for sat_fn in day_sat_files:
         sat_fn = goes_dl_loc + sat_fn.split('/')[-1]
         scn = get_scn([sat_fn], [band]) # get satpy scn object
         band_data = scn[band].compute().data
         band_data[np.isnan(band_data)] = 0
-        season_dict[dn].append(band_data.flatten())
-    return season_dict
+        month_dict[dn].append(band_data.flatten())
+        os.remove(sat_fn)
+    return month_dict
 
-def for_a_day(dt, season_dict, band, sat_num='16'):
+def for_a_day(dt, month_dict, band, sat_num='16'):
     hr, dn, yr = get_dt_str(dt)
     goes_dl_loc = get_goes_dl_loc(yr, dn)
     sat_fns_to_dl = []
@@ -112,52 +111,52 @@ def for_a_day(dt, season_dict, band, sat_num='16'):
     for sat_fn in sat_fns_to_dl:
         print(sat_fn)
     print(len(sat_fns_to_dl))
-    x = input('stop')
     if sat_fns_to_dl:
         p = Pool(8)
         p.map(download_sat_files, sat_fns_to_dl)
-    season_dict = save_reflectances(sat_fns_to_dl, dn, season_dict, band, goes_dl_loc)
-    return season_dict
+    month_dict = save_reflectances(sat_fns_to_dl, dn, month_dict, band, goes_dl_loc)
+    return month_dict
 
-def get_season(start_dn, end_dn):
-    if start_dn in list(range(335, 366)) + list(range(1, 60)) and end_dn in list(range(335, 366)) + list(range(1, 60)):
-        return 'winter'
-    if start_dn in list(range(60, 152)) and end_dn in list(range(60, 152)):
-        return 'spring'
-    if start_dn in list(range(152, 224)) and end_dn in list(range(152, 224)):
-        return 'summer'
-    if start_dn in list(range(224, 335)) and end_dn in list(range(224, 335)):
-        return 'fall'
+def get_month_dns(month, year):
+    month = int(month)
+    year = int(year)
+    first_day = datetime(year, month, 1)
+    if month == 12:
+        next_month = datetime(year + 1, 1, 1)
     else:
-        print('MAKE SURE start_dn and end_dn are in same season!!!')
-        return None
+        next_month = datetime(year, month + 1, 1)
+    # Get all Julian day numbers for that month
+    month_days = [(first_day + timedelta(days=i)).timetuple().tm_yday
+                  for i in range((next_month - first_day).days)]
+    month_days.sort()
+    return month_days[0], month_days[-1]
 
-def get_season_dict(start_dn, end_dn, band):
-    season = get_season(int(start_dn), int(end_dn))
-    fn = f"./data_pkls/{season}_{band}_data.pkl"
+def get_month_dict(month, band):
+    fn = "./data_pkls/{}_{}_data.pkl".format(band, month)
     with open(fn, 'rb') as f:
-        season_dict = pickle.load(f)
-    return season_dict, fn
+        month_dict = pickle.load(f)
 
-def main(start_dn, end_dn, yr):
-    band = 'C14'
+    return month_dict, fn
+
+def main(month_number, yr, band):
     dates = []
+    start_dn, end_dn = get_month_dns(month_number, yr)
+    month_dict, month_fn = get_month_dict(month_number, band)
     dns = list(range(int(start_dn), int(end_dn)+1))
-    season_dict, season_fn = get_season_dict(start_dn, end_dn, band)
     for dn in dns:
         dn = str(dn).zfill(3)
         dates.append({'day_number': dn, 'year': yr})
     dates.reverse()
     for date in dates:
         day_dt = pytz.utc.localize(datetime.strptime('{}{}'.format(date['year'], date['day_number']), '%Y%j')) # convert to datetime object
-        season_dict = for_a_day(day_dt, season_dict, band)
-        with open(season_fn, 'wb') as f:
-            pickle.dump(season_dict, f)
+        month_dict = for_a_day(day_dt, month_dict, band)
+        with open(month_fn, 'wb') as f:
+            pickle.dump(month_dict, f)
         start = time.time()
-        print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)), flush=True)
+        print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)))
 
 if __name__ == '__main__':
-    start_dn = sys.argv[1]
-    end_dn = sys.argv[2]
-    yr = sys.argv[3]
-    main(start_dn, end_dn, yr)
+    month_number = sys.argv[1]
+    yr = sys.argv[2]
+    band = sys.argv[3] #C14
+    main(month_number, yr, band)

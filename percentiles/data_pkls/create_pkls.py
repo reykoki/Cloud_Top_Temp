@@ -1,14 +1,28 @@
 import pickle
-import calendar
+from datetime import datetime, timedelta
 
-daynum = 1
-for month in range(1, 13):
-    days_in_month = calendar.monthrange(2020, month)[1]  # 2020 = leap year
-    # Create dict with keys as 3-digit day numbers and empty list values
-    month_dict = {f'{daynum + i:03d}': [] for i in range(days_in_month)}
+# Configuration
+year = 2020  # Leap year to include day 366
+start_month = 1
+end_month = 12  # Inclusive
+band = "C14"
 
-    # Save dict to pickle
-    with open(f'{month:02d}.pkl', 'wb') as f:
+# Generate and save monthly Julian day dictionaries
+for month in range(start_month, end_month + 1):
+    first_day = datetime(year, month, 1)
+    next_month = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    # Get Julian day numbers for the month
+    month_days = [(first_day + timedelta(days=i)).timetuple().tm_yday
+                  for i in range((next_month - first_day).days)]
+
+    # Dictionary with Julian days as keys
+    #month_dict = {f"{d:03d}": [] for d in month_days}
+    month_dict = {'{0:03d}'.format(d): [] for d in month_days}
+
+
+    # Save to pickle with unpadded month number
+    filename = '{}_{}_data.pkl'.format(month, band)
+    with open(filename, "wb") as f:
         pickle.dump(month_dict, f)
-
-    daynum += days_in_month
+print("Pickle files saved for months {} through {}.".format(start_month, end_month))

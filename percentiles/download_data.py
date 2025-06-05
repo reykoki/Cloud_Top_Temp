@@ -24,6 +24,7 @@ import shutil
 import wget
 from datetime import timedelta
 from get_goes import get_sat_files, get_goes_dl_loc, get_file_locations, download_sat_files, check_goes_exists
+import xarray as xr
 
 global goes_dir
 goes_dir = './GOES/'
@@ -85,11 +86,12 @@ def get_scn(fns, to_load, res=2000, reader='abi_l1b'):
 def save_reflectances(day_sat_files, dn, month_dict, band, goes_dl_loc):
     for sat_fn in day_sat_files:
         sat_fn = goes_dl_loc + sat_fn.split('/')[-1]
-        scn = get_scn([sat_fn], [band]) # get satpy scn object
-        band_data = scn[band].compute().data
-        band_data[np.isnan(band_data)] = 0
-        month_dict[dn].append(band_data.flatten())
-        os.remove(sat_fn)
+        if os.path.exists(sat_fn):
+            scn = get_scn([sat_fn], [band]) # get satpy scn object
+            band_data = scn[band].compute().data
+            band_data[np.isnan(band_data)] = 0
+            month_dict[dn].append(band_data.flatten())
+            os.remove(sat_fn)
     return month_dict
 
 def for_a_day(dt, month_dict, band, sat_num='16'):
@@ -149,9 +151,10 @@ def main(month_number, yr, band):
     dates.reverse()
     for date in dates:
         day_dt = pytz.utc.localize(datetime.strptime('{}{}'.format(date['year'], date['day_number']), '%Y%j')) # convert to datetime object
-        month_dict = for_a_day(day_dt, month_dict, band)
-        with open(month_fn, 'wb') as f:
-            pickle.dump(month_dict, f)
+        if len(month_dict[date['day_number']]) == 0:
+            month_dict = for_a_day(day_dt, month_dict, band)
+            with open(month_fn, 'wb') as f:
+                pickle.dump(month_dict, f)
         start = time.time()
         print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)))
 

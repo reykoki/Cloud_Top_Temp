@@ -1,4 +1,5 @@
 import os
+import glob
 from datetime import datetime
 import pytz
 from datetime import timedelta
@@ -9,8 +10,23 @@ from botocore.client import Config
 global client
 client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 
+global goes_dir
+#goes_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
+goes_dir = '/scratch/alpine/mecr8410/Cloud_Top_Temp/GOES/'
+
+def doesnt_already_exists(yr, dn, fn_head):
+    fn_head_parts = fn_head.split('_')
+    sat_num = fn_head_parts[0]
+    start_scan = fn_head_parts[1]
+    file_list = glob.glob('{}{}/{}/{}*{}*.nc'.format(goes_dir, yr, dn, sat_num, start_scan))
+    print(file_list)
+    if len(file_list) > 0:
+        print("FILE THAT ALREADY EXIST:", file_list[0], flush=True)
+        return False
+    return True
+
+
 def get_goes_dl_loc(yr, dn):
-    goes_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
     global goes_dl_loc
     goes_dl_loc = '{}{}/{}/'.format(goes_dir, yr, dn)
     return goes_dl_loc

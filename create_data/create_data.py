@@ -42,13 +42,21 @@ def get_scn(fns, to_load, extent, res=2000, reader='abi_l1b'):
 def normalize(data):
     return (data - np.nanmin(data)) / (np.nanmax(data) - np.nanmin(data))
 
-def get_IR(scn,bands):
+
+def clip_scale_percentile(data, min_p, max_p):
+    scaled = (data - min_p) / (max_p - min_p)
+    clipped = np.clip(scaled, 0, 1)
+    return clipped
+
+def get_IR(scn, bands, band_stats):
+    low_p = 1
+    high_p = 99
     C14 = scn[bands[0]].compute().data
-    #C14 = normalize(C14)
+    C14 = clip_scale_percentile(C14, band_stats['C14']['percentiles'][low_p], band_stats['C14']['percentiles'][high_p])
     C15 = scn[bands[1]].compute().data
-    #C15 = normalize(C15)
+    C15 = clip_scale_percentile(C15, band_stats['C15']['percentiles'][low_p], band_stats['C15']['percentiles'][high_p])
     C16 = scn[bands[2]].compute().data
-    #C16 = normalize(C16)
+    C16 = clip_scale_percentile(C16, band_stats['C16']['percentiles'][low_p], band_stats['C16']['percentiles'][high_p])
     IR = np.dstack([C14, C15, C16])
     IR[np.isnan(IR)] = 0
     return IR
@@ -101,7 +109,7 @@ def split_and_save(full_image, full_truth, full_coords, fn_head, img_size=1024):
             fn_list.append(fn)
     return fn_list
 
-def create_data_truth(sat_fns, yr, dn, fn_head):
+def create_data_truth(sat_fns, yr, dn, fn_head, band_stats):
     sat_fns = list(set(sat_fns))
     sat_fns.sort()
     bands = ['C14', 'C15', 'C16']
@@ -123,7 +131,8 @@ def create_data_truth(sat_fns, yr, dn, fn_head):
     mask = ['TEMP']
     temp_scn = get_scn([sat_fns[-1]], mask, extent, reader='abi_l2_nc') # get satpy scn object
     therm_mask = get_temp(temp_scn)
-    IR = get_IR(scn, bands) # from the scene object, extract RGB data for plotting
+    C14_stats = get_stats_dict(dt.month, 'C14')
+    IR = get_IR(scn, bands, band_stats) # from the scene object, extract RGB data for plotting
 
     lon, lat = scn['C14'].attrs['area'].get_lonlats()
     lat_lon = np.dstack([lat, lon])

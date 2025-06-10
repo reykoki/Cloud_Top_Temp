@@ -45,18 +45,32 @@ def sample_doesnt_exist(yr, dn, fn_head, idx, density):
         return False
     return True
 
-
-def get_yr_dn_fn_head(fn_head):
+def get_yr_dn_month_fn_head(fn_head):
     yr_dn = fn_head.split('_s')[-1][0:7]
     yr = yr_dn[0:4]
     dn = yr_dn[4:]
-    return yr, dn
+    dt = datetime.strptime(yr_dn, '%Y%j')
+    return yr, dn, dt.month
+
+def get_stats_dict(month, sat):
+    bands = ['C14', 'C15', 'C16']
+    all_band_dict = {}
+    for band in bands:
+
+        pkl_loc = "../percentiles/data_pkls/{}/percentile_stats_{}_{}_2024_{}.pkl".format(band, sat, band, str(month).zfill(2))
+        print(pkl_loc)
+        with open(pkl_loc, 'rb') as f:
+            stats_dict = pickle.load(f)
+        all_bands_dict.update({band : stats_dict})
+    return all_bands_dict
 
 #@ray.remote(max_calls=1)
 def iter_sample(files_for_sample):
     fn_head = files_for_sample[0].split('C14_')[-1].split('.')[0].split('_e2')[0]
-    yr, dn = get_yr_dn_fn_head(fn_head)
-    create_data_truth(files_for_sample, yr, dn, fn_head)
+    sat = fn_head.split('_')[0]
+    yr, dn, month = get_yr_dn_month_fn_head(fn_head)
+    band_stats = get_stats_dict(month, sat)
+    create_data_truth(files_for_sample, yr, dn, fn_head, band_stats)
     return
 
 def run_no_ray(sample_list):

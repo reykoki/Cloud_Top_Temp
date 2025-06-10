@@ -17,11 +17,12 @@ import pytz
 import shutil
 import wget
 from datetime import timedelta
-from get_goes import get_sat_files, get_goes_dl_loc, get_file_locations, download_sat_files, check_goes_exists
+from get_goes import get_sat_files, get_goes_dl_loc, get_file_locations, download_sat_files, check_goes_exists, doesnt_already_exists
 #from get_null_df import *
 
-global full_data_dir
-full_data_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/cloud_data/'
+global goes_dir
+#goes_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
+goes_dir = '/scratch/alpine/mecr8410/Cloud_Top_Temp/GOES/'
 
 # get list of datetimes when the solar zenith angle for far east and west boundaries are less than 50 deg
 def get_sun_up_dts(dt,max_sza=70.0, west_lon=-125.0, west_lat=40.0, east_lon=-110.0, east_lat=40.0):
@@ -35,20 +36,10 @@ def get_sun_up_dts(dt,max_sza=70.0, west_lon=-125.0, west_lat=40.0, east_lon=-11
     sun_up_dts = [day_dts[idx] for idx in overlap]
     return sun_up_dts
 
-def doesnt_already_exists(yr, dn, fn_head):
-    fn_head_parts = fn_head.split('_')
-    sat_num = fn_head_parts[0]
-    start_scan = fn_head_parts[1]
-    file_list = glob.glob('{}truth/{}/{}/{}_{}_*.tif'.format(full_data_dir, yr, dn, sat_num, start_scan))
-    if len(file_list) > 0:
-        print("FILE THAT ALREADY EXIST:", file_list[0], flush=True)
-        return False
-    file_list = glob.glob('{}bad_img/{}_{}_*.tif'.format(full_data_dir, sat_num, start_scan))
-    if len(file_list) > 0:
-        print("THIS IMAGE FAILED:", file_list[0], flush=True)
-        return False
-    return True
-
+def get_dt_every_n_hrs(dt, n_hrs=3):
+    dt = dt.replace(hour=0, minute=0)
+    day_dts = [dt+timedelta(hours=t) for t in np.arange(0,24,n_hrs)]
+    return day_dts
 
 def get_dt_str(dt):
     hr = dt.hour
@@ -59,11 +50,36 @@ def get_dt_str(dt):
     yr = dt.year
     return hr, dn, yr
 
+def for_a_dt(dt, sat_num='16'):
+    hr, dn, yr = get_dt_str(dt)
+    goes_dl_loc = get_goes_dl_loc(yr, dn)
+    sat_fns_to_dl = []
+    valid_times = [dt]
+    if valid_times and sat_num:
+        fn_heads, sat_fns = get_sat_files(valid_times, sat_num)
+    else:
+        sat_fns = None
+    if sat_fns:
+        for idx, sat_fn_entry in enumerate(sat_fns):
+            fn_head = fn_heads[idx]
+            if doesnt_already_exists(yr, dn, fn_head):
+                sat_fns_to_dl.extend(sat_fn_entry)
+    sat_fns_to_dl = check_goes_exists(sat_fns_to_dl)
+    print(sat_fns_to_dl)
+    for sat_fn in sat_fns_to_dl:
+        print(sat_fn)
+    if sat_fns_to_dl:
+        print(sat_fn)
+    if sat_fns_to_dl:
+        p = Pool(4)
+        p.map(download_sat_files, sat_fns_to_dl)
+
 def for_a_day(dt, sat_num='16'):
     hr, dn, yr = get_dt_str(dt)
     goes_dl_loc = get_goes_dl_loc(yr, dn)
     sat_fns_to_dl = []
-    valid_times = get_sun_up_dts(dt)
+    #valid_times = get_sun_up_dts(dt)
+    valid_times = get_dt_every_n_hrs(dt)
     if valid_times and sat_num:
         fn_heads, sat_fns = get_sat_files(valid_times, sat_num)
     else:
@@ -76,7 +92,6 @@ def for_a_day(dt, sat_num='16'):
     sat_fns_to_dl = check_goes_exists(sat_fns_to_dl)
     for sat_fn in sat_fns_to_dl:
         print(sat_fn)
-    x =input('stop')
     if sat_fns_to_dl:
         p = Pool(8)
         p.map(download_sat_files, sat_fns_to_dl)

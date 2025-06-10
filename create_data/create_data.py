@@ -44,11 +44,11 @@ def normalize(data):
 
 def get_IR(scn,bands):
     C14 = scn[bands[0]].compute().data
-    C14 = normalize(C14)
+    #C14 = normalize(C14)
     C15 = scn[bands[1]].compute().data
-    C15 = normalize(C15)
+    #C15 = normalize(C15)
     C16 = scn[bands[2]].compute().data
-    C16 = normalize(C16)
+    #C16 = normalize(C16)
     IR = np.dstack([C14, C15, C16])
     IR[np.isnan(IR)] = 0
     return IR
@@ -60,11 +60,20 @@ def get_temp(temp_scn):
     temp[(temp>=233) & (temp<=253)] = 2 # mid
     temp[(temp>253)] = 1 # low
     temp = np.array(temp, dtype=np.int8)
-    one_hot_mask = get_one_hot(temp) # from the scene object, extract RGB data for plotting
-    return one_hot_mask
+    therm_mask = thermometer_encode(temp)
+    return therm_mask
+    #one_hot_mask = get_one_hot(temp) # from the scene object, extract RGB data for plotting
+    #return one_hot_mask
 
-def get_one_hot(binary, n_cats=4):
-    k = np.take(np.eye(n_cats), binary, axis=1)
+def thermometer_encode(x, num_cats=3):
+    # n_cats is 3 because [0, 0, 0] is no cloud (ground)
+    # [0, 0, 1] is low cloud [1, 1, 1] is high cloud
+    flat = x.flatten()
+    encoded = (np.arange(num_cats) < flat[:, None]).astype(int)
+    return encoded.reshape(*x.shape, num_slots)
+
+def get_one_hot(cat_encode, n_cats=4):
+    k = np.take(np.eye(n_cats), cat_encode, axis=1)
     k = k[1:,:,:]
     k = np.einsum('ijk->jki', k)
     return k
@@ -113,12 +122,12 @@ def create_data_truth(sat_fns, yr, dn, fn_head):
     conus_crs = scn['C14'].attrs['area'].to_cartopy_crs() # the crs object will have the area extent for plotting
     mask = ['TEMP']
     temp_scn = get_scn([sat_fns[-1]], mask, extent, reader='abi_l2_nc') # get satpy scn object
-    one_hot_mask = get_temp(temp_scn)
+    therm_mask = get_temp(temp_scn)
     IR = get_IR(scn, bands) # from the scene object, extract RGB data for plotting
 
     lon, lat = scn['C14'].attrs['area'].get_lonlats()
     lat_lon = np.dstack([lat, lon])
-    tif_fns = split_and_save(IR, one_hot_mask, lat_lon, fn_head)
+    tif_fns = split_and_save(IR, therm_mask, lat_lon, fn_head)
 #    for sat_fn in sat_fns:
 #        os.remove(sat_fn)
     print(tif_fns)

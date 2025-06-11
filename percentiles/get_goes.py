@@ -56,7 +56,7 @@ def get_GOES_file_loc(curr_time, mode, sat_num, band):
         band_fn = band_filelist['Contents'][idx-1]['Key']
         return [band_fn]
 
-def get_sat_files(time_list, sat_num, band='C14'):
+def get_sat_files(time_list, sat_num, band):
 
     all_fn_heads = []
     all_sat_fns = []

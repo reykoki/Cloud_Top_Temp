@@ -1,4 +1,5 @@
 import shutil
+import gc
 from multiprocessing import Pool
 import matplotlib
 matplotlib.use("Agg")
@@ -83,24 +84,28 @@ def get_scn(fns, to_load, res=2000, reader='abi_l1b'):
     new_scn = scn.resample(my_area) # resamples datasets and resturns a new scene object
     return new_scn
 
-def save_reflectances(day_sat_files, dn, month_dict, band, goes_dl_loc):
+def save_reflectances(day_sat_files, dn, npy_fn, band, goes_dl_loc):
+    day_data = []
     for sat_fn in day_sat_files:
         sat_fn = goes_dl_loc + sat_fn.split('/')[-1]
         if os.path.exists(sat_fn):
             scn = get_scn([sat_fn], [band]) # get satpy scn object
             band_data = scn[band].compute().data
             band_data[np.isnan(band_data)] = 0
-            month_dict[dn].append(band_data.flatten())
+            day_data.extend(band_data.flatten())
             os.remove(sat_fn)
-    return month_dict
+    np.save(npy_fn, np.array(day_data))
+    day_data = None
+    gc.collect()
+    return
 
-def for_a_day(dt, month_dict, band, sat_num='16'):
+def for_a_day(dt, npy_fn, band, sat_num='16'):
     hr, dn, yr = get_dt_str(dt)
     goes_dl_loc = get_goes_dl_loc(yr, dn)
     sat_fns_to_dl = []
     valid_times = get_day_dts(dt)
     if valid_times and sat_num:
-        fn_heads, sat_fns = get_sat_files(valid_times, sat_num)
+        fn_heads, sat_fns = get_sat_files(valid_times, sat_num, band)
     else:
         sat_fns = None
     if sat_fns:
@@ -116,8 +121,8 @@ def for_a_day(dt, month_dict, band, sat_num='16'):
     if sat_fns_to_dl:
         p = Pool(8)
         p.map(download_sat_files, sat_fns_to_dl)
-    month_dict = save_reflectances(sat_fns_to_dl, dn, month_dict, band, goes_dl_loc)
-    return month_dict
+    save_reflectances(sat_fns_to_dl, dn, npy_fn, band, goes_dl_loc)
+    return
 
 def get_month_dns(month, year):
     month = int(month)
@@ -133,17 +138,11 @@ def get_month_dns(month, year):
     month_days.sort()
     return month_days[0], month_days[-1]
 
-def get_month_dict(month, band):
-    fn = "./data_pkls/{}_{}_data.pkl".format(band, month)
-    with open(fn, 'rb') as f:
-        month_dict = pickle.load(f)
-
-    return month_dict, fn
 
 def main(month_number, yr, band):
     dates = []
+    sat = 'G16'
     start_dn, end_dn = get_month_dns(month_number, yr)
-    month_dict, month_fn = get_month_dict(month_number, band)
     dns = list(range(int(start_dn), int(end_dn)+1))
     for dn in dns:
         dn = str(dn).zfill(3)
@@ -151,10 +150,9 @@ def main(month_number, yr, band):
     dates.reverse()
     for date in dates:
         day_dt = pytz.utc.localize(datetime.strptime('{}{}'.format(date['year'], date['day_number']), '%Y%j')) # convert to datetime object
-        if len(month_dict[date['day_number']]) == 0:
-            month_dict = for_a_day(day_dt, month_dict, band)
-            with open(month_fn, 'wb') as f:
-                pickle.dump(month_dict, f)
+        npy_fn = './reflectance/{}/{}/{}_{}.npy'.format(date['year'], date['day_number'], sat, band)
+        if not os.path.exists(npy_fn):
+            for_a_day(day_dt, npy_fn, band)
         start = time.time()
         print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)))
 

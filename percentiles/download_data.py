@@ -99,7 +99,7 @@ def save_reflectances(day_sat_files, dn, npy_fn, band, goes_dl_loc):
     gc.collect()
     return
 
-def for_a_day(dt, npy_fn, band, sat_num='16'):
+def for_a_day(dt, npy_fn, band, sat_num):
     hr, dn, yr = get_dt_str(dt)
     goes_dl_loc = get_goes_dl_loc(yr, dn)
     sat_fns_to_dl = []
@@ -139,25 +139,31 @@ def get_month_dns(month, year):
     return month_days[0], month_days[-1]
 
 
-def main(month_number, yr, band):
-    dates = []
-    sat = 'G16'
-    start_dn, end_dn = get_month_dns(month_number, yr)
-    dns = list(range(int(start_dn), int(end_dn)+1))
-    for dn in dns:
-        dn = str(dn).zfill(3)
-        dates.append({'day_number': dn, 'year': yr})
-    dates.reverse()
-    for date in dates:
-        day_dt = pytz.utc.localize(datetime.strptime('{}{}'.format(date['year'], date['day_number']), '%Y%j')) # convert to datetime object
-        npy_fn = './reflectance/{}/{}/{}_{}.npy'.format(date['year'], date['day_number'], sat, band)
-        if not os.path.exists(npy_fn):
-            for_a_day(day_dt, npy_fn, band)
-        start = time.time()
-        print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)))
+def main(month_number, yr, band, sat):
+    if month_number == 'all':
+        months = list(range(1,13))
+    else:
+        months = [int(month_number)]
+    for month in months:
+        dates = []
+        start_dn, end_dn = get_month_dns(month, yr)
+        dns = list(range(int(start_dn), int(end_dn)+1))
+        for dn in dns:
+            dn = str(dn).zfill(3)
+            dates.append({'day_number': dn, 'year': yr})
+        dates.reverse()
+        for date in dates:
+            day_dt = pytz.utc.localize(datetime.strptime('{}{}'.format(date['year'], date['day_number']), '%Y%j')) # convert to datetime object
+            npy_fn = './reflectance/{}/{}/{}/{}/{}_{}.npy'.format(date['year'], sat, band, date['day_number'], sat, band)
+            #if not os.path.exists(npy_fn):
+            sat_num = sat.split('G')[-1]
+            for_a_day(day_dt, npy_fn, band, sat_num)
+            start = time.time()
+            print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)))
 
 if __name__ == '__main__':
-    month_number = sys.argv[1]
-    yr = sys.argv[2]
-    band = sys.argv[3] #C14
-    main(month_number, yr, band)
+    sat= sys.argv[1]
+    band = sys.argv[2] #C14
+    yr = sys.argv[3]
+    month_number = sys.argv[4]
+    main(month_number, yr, band, sat)

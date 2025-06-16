@@ -1,0 +1,16 @@
+boto3
+botocore
+Cartopy
+geopandas
+matplotlib
+numpy
+Pillow
+pyorbital
+pyproj
+pyresample
+pytz
+ray
+satpy
+scikit_image
+wget
+xarray

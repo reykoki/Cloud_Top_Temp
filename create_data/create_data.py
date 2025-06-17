@@ -4,7 +4,8 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from pyresample import create_area_def
 from satpy import Scene
-from satpy.writers import get_enhanced_image
+#from satpy.writers import get_enhanced_image
+from satpy.enhancements.enhancer import get_enhanced_image
 from PIL import Image, ImageOps
 import os
 import skimage
@@ -39,9 +40,6 @@ def get_scn(fns, to_load, extent, res=2000, reader='abi_l1b'):
     new_scn = scn.resample(my_area) # resamples datasets and resturns a new scene object
     return new_scn
 
-def normalize(data):
-    return (data - np.nanmin(data)) / (np.nanmax(data) - np.nanmin(data))
-
 
 def clip_scale_percentile(data, min_p, max_p):
     scaled = (data - min_p) / (max_p - min_p)
@@ -49,7 +47,7 @@ def clip_scale_percentile(data, min_p, max_p):
     return clipped
 
 def get_IR(scn, bands, band_stats):
-    low_p = 1
+    low_p = 1.5
     high_p = 99
     C14 = scn[bands[0]].compute().data
     C14 = clip_scale_percentile(C14, band_stats['C14']['percentiles'][low_p], band_stats['C14']['percentiles'][high_p])
@@ -78,7 +76,7 @@ def thermometer_encode(x, num_cats=3):
     # [0, 0, 1] is low cloud [1, 1, 1] is high cloud
     flat = x.flatten()
     encoded = (np.arange(num_cats) < flat[:, None]).astype(int)
-    return encoded.reshape(*x.shape, num_slots)
+    return encoded.reshape(*x.shape, num_cats)
 
 def get_one_hot(cat_encode, n_cats=4):
     k = np.take(np.eye(n_cats), cat_encode, axis=1)
@@ -103,7 +101,8 @@ def split_and_save(full_image, full_truth, full_coords, fn_head, img_size=1024):
             center_lat = np.round(coords[int(img_size/2)][int(img_size/2)][0], 2)
             center_lon = np.round(coords[int(img_size/2)][int(img_size/2)][1], 2)
             fn = '{}_{}_{}.tif'.format(fn_head, center_lat, center_lon)
-            save_loc = "/scratch1/RDARCH/rda-ghpcs/Rey.Koki/Cloud_Top_Temp/cloud_data/"
+            #save_loc = "/scratch1/RDARCH/rda-ghpcs/Rey.Koki/Cloud_Top_Temp/cloud_data/"
+            save_loc = '/scratch3/BMC/gpu-ghpcs/Rey.Koki/Cloud_Top_Temp/cloud_data/'
             skimage.io.imsave('{}data/{}/{}/{}'.format(save_loc, yr, dn, fn), data)
             skimage.io.imsave('{}truth/{}/{}/{}'.format(save_loc, yr, dn, fn), truth)
             fn_list.append(fn)
@@ -122,16 +121,15 @@ def create_data_truth(sat_fns, yr, dn, fn_head, band_stats):
     except Exception as e:
         print(e)
         print('{} did not download, moving on'.format(sat_fns))
-        for sat_fn in sat_fns:
-            if os.path.exists(sat_fn):
-                os.remove(sat_fn)
+        #for sat_fn in sat_fns:
+        #    if os.path.exists(sat_fn):
+        #        os.remove(sat_fn)
         return fn_head
 
     conus_crs = scn['C14'].attrs['area'].to_cartopy_crs() # the crs object will have the area extent for plotting
     mask = ['TEMP']
     temp_scn = get_scn([sat_fns[-1]], mask, extent, reader='abi_l2_nc') # get satpy scn object
     therm_mask = get_temp(temp_scn)
-    C14_stats = get_stats_dict(dt.month, 'C14')
     IR = get_IR(scn, bands, band_stats) # from the scene object, extract RGB data for plotting
 
     lon, lat = scn['C14'].attrs['area'].get_lonlats()

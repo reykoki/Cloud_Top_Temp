@@ -12,9 +12,10 @@ client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 
 global goes_dir
 #goes_dir = '/scratch1/RDARCH/rda-ghpcs/Rey.Koki/GOES/'
-goes_dir = '/scratch/alpine/mecr8410/Cloud_Top_Temp/GOES/'
+#goes_dir = '/scratch/alpine/mecr8410/Cloud_Top_Temp/GOES/'
+goes_dir = '/scratch3/BMC/gpu-ghpcs/Rey.Koki/Cloud_Top_Temp/GOES/'
 
-def doesnt_already_exists(yr, dn, fn_head):
+def goes_doesnt_already_exists(yr, dn, fn_head):
     fn_head_parts = fn_head.split('_')
     sat_num = fn_head_parts[0]
     start_scan = fn_head_parts[1]

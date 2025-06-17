@@ -135,8 +135,8 @@ def create_data_truth(sat_fns, yr, dn, fn_head, band_stats):
     lon, lat = scn['C14'].attrs['area'].get_lonlats()
     lat_lon = np.dstack([lat, lon])
     tif_fns = split_and_save(IR, therm_mask, lat_lon, fn_head)
-#    for sat_fn in sat_fns:
-#        os.remove(sat_fn)
+    for sat_fn in sat_fns:
+        os.remove(sat_fn)
     print(tif_fns)
 
     del scn

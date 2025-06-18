@@ -4,11 +4,11 @@ import glob
 import random
 
 #yrs = ['2018', '2019', '2020', '2021', '2024']
-yrs = ['2023']
-val_yr = ['2024']
-test_yr = ['2024']
+yrs = ['2024']
+val_yr = ['2023']
+test_yr = ['2023']
 
-truth_dir = '/scratch/alpine/mecr8410/Cloud_Top_Temp/cloud_data/truth/'
+truth_dir = '/scratch3/BMC/gpu-ghpcs/Rey.Koki/Cloud_Top_Temp/cloud_data/truth/'
 
 
 def get_train_fns(yrs):

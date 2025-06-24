@@ -29,14 +29,24 @@ def make_reflectance_dir():
                 if not os.path.exists(dn_path):
                     os.makedirs(dn_path)
 
+def make_data_dir():
+    root_dir = '../cloud_data/'
+    root_dir = '../large_cloud_data/'
+    data_dirs = ['truth/', 'data/']
+    for data_dir in data_dirs:
+        for yr in yrs:
+            for dn in dns:
+                dn_path = root_dir + data_dir + yr + dn
+                if not os.path.exists(dn_path):
+                    os.makedirs(dn_path)
+
 def make_goes_dir():
-    root_dir = '/scratch/alpine/mecr8410/Cloud_Top_Temp/GOES/'
+    root_dir = '../GOES/'
     for yr in yrs:
         for dn in dns:
             dn_path = root_dir + yr + dn
             if not os.path.exists(dn_path):
                 os.makedirs(dn_path)
-
 
 make_stats_dir()
 #make_reflectance_dir()

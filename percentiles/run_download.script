@@ -4,13 +4,13 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=40G
-#SBATCH --time=2:00:00
+#SBATCH --time=4:00:00
 #SBATCH --partition=amilan
 #SBATCH --qos=normal
 #SBATCH --output=/scratch/alpine/mecr8410/semantic_segmentation_smoke/scripts/make_data/logs_new/output.%j.log
 #SBATCH --account=ucb673_asc1
 #SBATCH --export=NONE
-#SBATCH --job-name=percentiles
+#SBATCH --job-name=downloads
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user="rey.koki@colorado.edu"
 

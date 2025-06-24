@@ -63,11 +63,13 @@ def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     torch.cuda.set_device(rank)
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
     # initialize the process group
     dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
 
-def val_model(dataloader, model, criterion, rank):
+def val_model(dataloader, model, criterion, rank, world_size):
     model.eval()
     torch.set_grad_enabled(False)
     total_loss = 0.0
@@ -77,20 +79,20 @@ def val_model(dataloader, model, criterion, rank):
     for data in dataloader:
         batch_data, batch_labels = data
         batch_data, batch_labels = batch_data.to(rank, dtype=torch.float32, non_blocking=True), batch_labels.to(rank, dtype=torch.float32, non_blocking=True)
-        preds = model(batch_data)
-        high_loss = criterion(preds[:,0,:,:], batch_labels[:,0,:,:]).to(rank)
-        med_loss = criterion(preds[:,1,:,:], batch_labels[:,1,:,:]).to(rank)
-        low_loss = criterion(preds[:,2,:,:], batch_labels[:,2,:,:]).to(rank)
-        loss = 3*high_loss + 2*med_loss + low_loss
-        test_loss = loss.item()
-        total_loss += test_loss
+        with torch.cuda.amp.autocast():
+            preds = model(batch_data)
+            high_loss = criterion(preds[:,0,:,:], batch_labels[:,0,:,:])
+            med_loss = criterion(preds[:,1,:,:], batch_labels[:,1,:,:])
+            low_loss = criterion(preds[:,2,:,:], batch_labels[:,2,:,:])
+            loss = high_loss + med_loss + low_loss
+        total_loss += loss.item()
         high_iou.update(preds[:,0,:,:], batch_labels[:,0,:,:])
         med_iou.update(preds[:,1,:,:], batch_labels[:,1,:,:])
         low_iou.update(preds[:,2,:,:], batch_labels[:,2,:,:])
     final_loss = total_loss/len(dataloader)
     loss_tensor = torch.tensor([final_loss]).to(rank)
     dist.all_reduce(loss_tensor)
-    loss_tensor /= 8
+    loss_tensor /= world_size
     if rank==0:
         print("Validation Loss: {}".format(loss_tensor[0]), flush=True)
     return final_loss, high_iou.all_reduce(), med_iou.all_reduce(), low_iou.all_reduce()
@@ -146,7 +148,7 @@ def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
     return model, optimizer, start_epoch, best_loss
 
 
-def train_model(train_dataloader, model, criterion, optimizer, rank):
+def train_model(train_dataloader, model, criterion, optimizer, rank, scaler):
     total_loss = 0.0
     model.train()
     torch.set_grad_enabled(True)
@@ -157,17 +159,18 @@ def train_model(train_dataloader, model, criterion, optimizer, rank):
         batch_data, batch_labels = data
         batch_data, batch_labels = batch_data.to(rank, dtype=torch.float32, non_blocking=True), batch_labels.to(rank, dtype=torch.float32, non_blocking=True)
 
-        preds = model(batch_data)
+        with torch.cuda.amp.autocast():
+            preds = model(batch_data)
+            high_loss = criterion(preds[:,0,:,:], batch_labels[:,0,:,:])
+            med_loss = criterion(preds[:,1,:,:], batch_labels[:,1,:,:])
+            low_loss = criterion(preds[:,2,:,:], batch_labels[:,2,:,:])
+            loss = high_loss + med_loss + low_loss
 
-        high_loss = criterion(preds[:,0,:,:], batch_labels[:,0,:,:]).to(rank)
-        med_loss = criterion(preds[:,1,:,:], batch_labels[:,1,:,:]).to(rank)
-        low_loss = criterion(preds[:,2,:,:], batch_labels[:,2,:,:]).to(rank)
-        loss = 6*high_loss + 4*med_loss + low_loss
-        total_loss += loss.item()
+        total_loss +=loss.item()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
-        # compute gradient and do step
-        loss.backward()
-        optimizer.step()
 
     epoch_loss = total_loss/len(train_dataloader)
     if rank==0:
@@ -193,10 +196,10 @@ def get_transforms(train_augs):
 def prepare_dataloader(rank, world_size, data_dict, cat, batch_size, pin_memory=True, num_workers=4, is_train=True, train_aug=None):
     #if is_train:
     #    data_transforms = get_transforms(train_aug)
-    #    dataset = SmokeDataset(data_dict[cat], transform=data_transforms)
+    #    dataset = CloudDataset(data_dict[cat], transform=data_transforms)
     #else:
     data_transforms = transforms.Compose([transforms.ToTensor()])
-    dataset = SmokeDataset(data_dict[cat], transform=data_transforms)
+    dataset = CloudDataset(data_dict[cat], transform=data_transforms)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=is_train, drop_last=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=True, shuffle=False, sampler=sampler)
     return dataloader
@@ -215,7 +218,7 @@ def main(rank, world_size, config_fn):
     with open(data_fn, 'rb') as handle:
         data_dict = pickle.load(handle)
 
-    n_epochs = 10
+    n_epochs = 100
     start_epoch = 0
     lr = cfg['lr']
     batch_size = int(cfg['batch_size'])
@@ -258,6 +261,7 @@ def main(rank, world_size, config_fn):
 
     train_loader = prepare_dataloader(rank, world_size, data_dict, 'train', batch_size=batch_size, num_workers=num_workers, train_aug=cfg['train_augmentations'])
     val_loader = prepare_dataloader(rank, world_size, data_dict, 'val', batch_size=batch_size, is_train=False, num_workers=num_workers)
+    scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(start_epoch, n_epochs):
 
@@ -268,8 +272,9 @@ def main(rank, world_size, config_fn):
         train_loader.sampler.set_epoch(epoch)
         val_loader.sampler.set_epoch(epoch)
 
-        train_model(train_loader, model, criterion, optimizer, rank)
-        val_loss, high_iou, med_iou, low_iou = val_model(val_loader, model, criterion, rank)
+        train_model(train_loader, model, criterion, optimizer, rank, scaler)
+        val_loss, high_iou, med_iou, low_iou = val_model(val_loader, model, criterion, rank, world_size)
+        
 
         if rank==0:
             print("time to run epoch:", np.round(time.time() - start, 2))
@@ -287,6 +292,8 @@ def main(rank, world_size, config_fn):
                 print('SAVING MODEL:\n', ckpt_pth, flush=True)
                 prev_iou = iou
 
+        torch.cuda.empty_cache()
+
     dist.destroy_process_group()
 
 
@@ -297,6 +304,7 @@ if __name__ == '__main__':
     world_size = 2 # num gpus
     if len(sys.argv) < 2:
         print('\n YOU DIDNT SPECIFY EXPERIMENT NUMBER! ', flush=True)
+        sys.exit(1)
     config_fn = str(sys.argv[1])
     mp.spawn(main, args=(world_size, config_fn), nprocs=world_size, join=True)
 

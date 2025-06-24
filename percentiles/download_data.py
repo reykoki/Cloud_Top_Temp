@@ -153,12 +153,12 @@ def main(month_number, yr, band, sat):
             dates.append({'day_number': dn, 'year': yr})
         dates.reverse()
         for date in dates:
+            start = time.time()
             day_dt = pytz.utc.localize(datetime.strptime('{}{}'.format(date['year'], date['day_number']), '%Y%j')) # convert to datetime object
             npy_fn = './reflectance/{}/{}/{}/{}/{}_{}.npy'.format(date['year'], sat, band, date['day_number'], sat, band)
-            #if not os.path.exists(npy_fn):
-            sat_num = sat.split('G')[-1]
-            for_a_day(day_dt, npy_fn, band, sat_num)
-            start = time.time()
+            if not os.path.exists(npy_fn):
+                sat_num = sat.split('G')[-1]
+                for_a_day(day_dt, npy_fn, band, sat_num)
             print("Time elapsed for data download for day {}{}: {}s".format(date['year'], date['day_number'], int(time.time() - start)))
 
 if __name__ == '__main__':

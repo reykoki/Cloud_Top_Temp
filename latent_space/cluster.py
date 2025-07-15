@@ -20,6 +20,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from torchinfo import summary
+import tifffile as tiff
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -46,9 +47,9 @@ def get_features(dataloader, model, rank, world_size):
     local_meta = []
 
     for batch in dataloader:
-        imgs = batch['image'].to(device)
-        hists = batch['hist'].to(device)
-        feats = model.encoder(imgs)
+        imgs = batch['image'].to(rank)
+        hists = batch['hist'].to(rank)
+        feats = model.module.encoder(imgs)
         deep_feat = feats[-1]
         pooled = deep_feat.mean(dim=(2, 3))  # (B, D)
 
@@ -128,7 +129,7 @@ def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
 
 def prepare_dataloader(rank, world_size, data_dict, cat, batch_size, pin_memory=True, num_workers=4, is_train=True, train_aug=None):
     data_transforms = transforms.Compose([transforms.ToTensor()])
-    dataset = CloudDataset(data_dict[cat], transform=data_transforms)
+    dataset = CloudPatchDataset(data_dict[cat])
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=is_train, drop_last=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=True, shuffle=False, sampler=sampler)
     return dataloader
@@ -195,7 +196,7 @@ def main(rank, world_size, config_fn):
 
     test_loader.sampler.set_epoch(start_epoch)
 
-    combined_feats, meta_data = get_features(test_loader, model, rank)
+    combined_feats, meta_data = get_features(test_loader, model, rank, world_size)
     
     finish_feats = time.time()
 

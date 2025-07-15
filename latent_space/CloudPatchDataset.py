@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset
-import tifffile
+import tifffile as tiff
 import numpy as np
 
 class CloudPatchDataset(Dataset):

@@ -1,0 +1,12 @@
+{
+    "architecture":"PSPNet",
+    "encoder": "timm-efficientnet-b0",
+    "chkpt": "/models/model.pth",
+    "train_augmentations": {"rhf": 0.3, 
+                            "rvf": 0.3},
+    "lr": 1e-4,
+    "batch_size": 128,
+    "num_workers": 4,
+    "datapointer": "/scratch3/BMC/gpu-ghpcs/Rey.Koki/Cloud_Top_Temp/deep_learning/dataset_pointers/large_cloud_stationary.pkl",
+    "encoder_weights": "None"
+}

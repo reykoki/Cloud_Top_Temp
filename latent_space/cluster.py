@@ -1,4 +1,5 @@
 import pickle
+from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 import random
 import torch.backends.cudnn as cudnn
@@ -188,8 +189,6 @@ def main(rank, world_size, config_fn):
     prev_iou = 0
 
     test_loader = prepare_dataloader(rank, world_size, data_dict, 'test', batch_size=batch_size, is_train=False, num_workers=num_workers)
-    scaler = torch.cuda.amp.GradScaler()
-
 
     if rank==0:
         start = time.time()

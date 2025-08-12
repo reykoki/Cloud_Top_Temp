@@ -27,8 +27,6 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
-
-
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
@@ -39,47 +37,79 @@ def setup(rank, world_size):
     dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
 
-def get_features(dataloader, model, rank, world_size):
+import torch
+import torch.distributed as dist
+from sklearn.preprocessing import StandardScaler
+
+def get_features(dataloader, model, rank, world_size, chunk_size=10000):
+    """
+    Extracts latent and histogram features using a DDP model and gathers them across GPUs
+    with chunking to avoid OOM.
+
+    Args:
+        dataloader: Distributed DataLoader
+        model: DDP model
+        rank: Rank of current process
+        world_size: Total number of GPUs
+        chunk_size: Number of samples per all_gather chunk
+    Returns:
+        combined_feats (np.ndarray), all_meta (list) on rank 0; otherwise (None, None)
+    """
     model.eval()
     torch.set_grad_enabled(False)
 
-    local_latent = []
-    local_hist = []
-    local_meta = []
+    device = torch.device(f"cuda:{rank}")
+    local_latent, local_hist, local_meta = [], [], []
 
+    # Step 1: Collect local features
     for batch in dataloader:
-        imgs = batch['image'].to(rank)
-        hists = batch['hist'].to(rank)
-        feats = model.module.encoder(imgs)
-        deep_feat = feats[-1]
-        pooled = deep_feat.mean(dim=(2, 3))  # (B, D)
+        imgs = batch['image'].to(device, non_blocking=True)  # (B, C, H, W)
+        hists = batch['hist'].to(device, non_blocking=True)  # (B, 3)
+
+        with torch.no_grad():
+            feats = model.module.encoder(imgs)
+            deep_feat = feats[-1]
+            pooled = deep_feat.mean(dim=(2, 3))  # (B, D)
 
         local_latent.append(pooled)
         local_hist.append(hists)
         local_meta.extend(zip(batch['source_file'], batch['row'], batch['col']))
 
-    local_latent = torch.cat(local_latent, dim=0)
-    local_hist = torch.cat(local_hist, dim=0)
-    local_combined = torch.cat([local_latent, local_hist], dim=1)  # (N_local, D + 3)
+    local_latent = torch.cat(local_latent, dim=0)  # (N_local, D)
+    local_hist = torch.cat(local_hist, dim=0)      # (N_local, 3)
+    local_combined = torch.cat([local_latent, local_hist], dim=1).to(device)
 
-    # Gather tensors to rank 0
-    gathered_feats = [torch.zeros_like(local_combined) for _ in range(world_size)]
-    dist.all_gather(gathered_feats, local_combined)
-    combined_feats = torch.cat(gathered_feats, dim=0) if rank == 0 else None
+    # Step 2: Gather features in chunks to avoid OOM
+    gathered_chunks = []
+    num_samples = local_combined.size(0)
+    start = 0
 
-    # Gather metadata separately (not supported by torch.distributed)
-    gathered_meta = None
+    while start < num_samples:
+        end = min(start + chunk_size, num_samples)
+        chunk = local_combined[start:end]
+        
+        # Prepare gather buffers for this chunk
+        gather_list = [torch.zeros_like(chunk) for _ in range(world_size)]
+        dist.all_gather(gather_list, chunk)
+        if rank == 0:
+            gathered_chunks.append(torch.cat(gather_list, dim=0))
+        start = end
+
+    combined_feats = torch.cat(gathered_chunks, dim=0).cpu() if rank == 0 else None
+
+    # Step 3: Gather metadata separately
+    gathered_meta = [None for _ in range(world_size)] if rank == 0 else None
+    dist.gather_object(local_meta, gathered_meta, dst=0)
+
+    # Step 4: Normalize on rank 0
     if rank == 0:
-        gathered_meta = [None for _ in range(world_size)]
-    gathered_meta = dist.gather_object(local_meta, object_gather_list=gathered_meta if rank == 0 else None, dst=0)
-
-    if rank == 0:
-        combined_feats = combined_feats.cpu().numpy()
+        combined_feats = combined_feats.numpy()
         combined_feats = StandardScaler().fit_transform(combined_feats)
-        all_meta = sum(gathered_meta, [])
+        all_meta = [item for sublist in gathered_meta for item in sublist]
         return combined_feats, all_meta
     else:
         return None, None
+
 
 def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
 
@@ -144,7 +174,6 @@ def main(rank, world_size, config_fn):
     encoder = cfg['encoder']
     lr = cfg['lr']
 
-
     data_fn = cfg['datapointer']
     with open(data_fn, 'rb') as handle:
         data_dict = pickle.load(handle)
@@ -155,7 +184,6 @@ def main(rank, world_size, config_fn):
     encoder_weights = cfg['encoder_weights']
 
     setup(rank, world_size)
-
 
     if rank==0:
         print('data dict:              ', data_fn)
@@ -182,6 +210,7 @@ def main(rank, world_size, config_fn):
         else:
             ckpt_loc = cfg['ckpt']
 
+    print("HELLO")
     model, optimizer, start_epoch, best_loss = load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num)
 
     criterion = nn.BCEWithLogitsLoss().to(rank)
@@ -200,9 +229,10 @@ def main(rank, world_size, config_fn):
     finish_feats = time.time()
 
     if rank == 0:
+        np.save("combined_feats.npy", combined_feats)
         print("time to get features:", np.round( finish_feats - start, 2))
         print("Running KMeans clustering...")
-        kmeans = KMeans(n_clusters=5, random_state=0)
+        kmeans = KMeans(n_clusters=8, random_state=0)
         cluster_labels = kmeans.fit_predict(combined_feats)
 
         # save the model and labels

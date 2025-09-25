@@ -1,4 +1,6 @@
 import umap
+import pickle
+from sklearn.decomposition import PCA
 import sys
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 import hdbscan
@@ -50,7 +52,7 @@ def plot_umap(labels, embedding, min_cluster_size, min_samples, n_components, n_
     plt.xlabel("UMAP 1")
     plt.ylabel("UMAP 2")
     plt.tight_layout()
-    plt.savefig('vary_all/umap_{}_{}_{}_{}.png'.format(min_cluster_size, min_samples, n_components, n_neighbors), dpi=200)
+    plt.savefig('vary_all/pca0_{}_{}_{}_{}.png'.format(min_cluster_size, min_samples, n_components, n_neighbors), dpi=200)
     return
 
 def main(n_components, n_neighbors, min_samples, min_cluster_size):
@@ -60,11 +62,25 @@ def main(n_components, n_neighbors, min_samples, min_cluster_size):
     print('min_samples', min_samples)
     print('min_cluster_size', min_cluster_size)
     print('==============')
+
+    #combined_feats = np.load('/scratch3/BMC/gpu-ghpcs/Rey.Koki/Cloud_Top_Temp/latent_space/combined_feats_deeper.npy')
     combined_feats = np.load('/scratch3/BMC/gpu-ghpcs/Rey.Koki/Cloud_Top_Temp/latent_space/combined_feats.npy')
+    #n_pca_components = 50  # usually between 20–100 works well
+    n_pca_components = 20  # usually between 20–100 works well
+    pca = PCA(n_components=n_pca_components)
+    combined_feats = pca.fit_transform(combined_feats)
+    with open("pca_{}.pkl".format(n_pca_components), "wb") as f:
+        pickle.dump(pca, f)
     umap_2d = get_embedding(combined_feats)
+    with open("umap_2d.pkl", "wb") as f:
+        pickle.dump(umap_2d, f)
     umap_nd = get_embedding(combined_feats, n_components=n_components, n_neighbors=n_neighbors)
+    with open("umap_{}d_{}_pca{}.pkl".format(n_components, n_neighbors, n_pca_components), "wb") as f:
+        pickle.dump(umap_nd, f)
     hdbscan_clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples)
     hdbscan_labels = hdbscan_clusterer.fit_predict(umap_nd)
+    with open("hdbscan_labels_{}_{}.pkl".format(min_cluster_size, min_samples), "wb") as f:
+        pickle.dump(hdbscan_labels, f)
     plot_umap(hdbscan_labels, umap_2d, min_cluster_size, min_samples, n_components, n_neighbors)
     print('metrics')
     get_metrics(combined_feats, hdbscan_labels)

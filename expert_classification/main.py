@@ -126,6 +126,8 @@ def iter_samples(dt, sat):
         #    os.mkdir(ray_dir)
         #ray.init(num_cpus=1, _temp_dir=ray_dir, include_dashboard=False, object_store_memory=int(40*1024**3)) # 40GB
         #run_remote(sample_list)
+        print(sample_list)
+        x = input("stop")
         run_no_ray(sample_list)
         #ray.shutdown()
         #shutil.rmtree(ray_dir)
@@ -135,7 +137,7 @@ def main():
     sat = "G16"
     dates = []
     start_dns = [325, 83, 278, 169, 129, 248, 180, 200, 154, 236, 33, 277, 251, 344, 282, 310, 156, 205, 29, 324, 14, 132, 226, 161, 176, 349, 153, 128, 290, 337, 9, 260, 140, 299, 18, 204, 196, 183, 166, 203, 160, 104, 362, 228, 164, 173, 199, 346, 353, 186]
-    start_dns = [199]
+    start_dns = [200]
     start_dns = list(set(start_dns))
     for dn in start_dns:
         dn = str(dn).zfill(3)

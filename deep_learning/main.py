@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
-from CloudDataset import CloudDataset 
+from CloudDataset import CloudDataset
 from torchvision import transforms
 import segmentation_models_pytorch as smp
 import torch.multiprocessing as mp

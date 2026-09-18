@@ -165,7 +165,7 @@ def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
     encoder = cfg['encoder']
     lr = cfg['lr']
 
-    model = smp.create_model(arch=arch, encoder_name=encoder, encoder_weights=None, in_channels=7, classes=5)
+    model = smp.create_model(arch=arch, encoder_name=encoder, encoder_weights=None, in_channels=7, classes=15)
 #CTT
     #model = smp.create_model(arch=arch, encoder_name=encoder, encoder_weights=None, in_channels=7, classes=19)
     model = model.to(rank)

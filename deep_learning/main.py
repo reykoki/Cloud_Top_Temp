@@ -95,25 +95,27 @@ def setup(rank, world_size):
     torch.backends.cudnn.allow_tf32 = True
     dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
+#CTT
+#def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
+#    losses = {}
+#    losses['cod'] = criterion_ord(preds[:, 0:5], labels[:, 0:5])
+#    losses['ctt'] = criterion_ord(preds[:, 5:10], labels[:, 5:10])
+#    losses['ctp'] = criterion_ord(preds[:, 10:15], labels[:, 10:15])
+#    losses['transition'] = criterion_cat(preds[:, 15:19], labels[:, 15].long())
+#    return losses, sum(losses.values())
 
-def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
-    losses = {}
-    losses['cod'] = criterion_ord(preds[:, 0:5], labels[:, 0:5])
-    losses['ctt'] = criterion_ord(preds[:, 5:10], labels[:, 5:10])
-    losses['ctp'] = criterion_ord(preds[:, 10:15], labels[:, 10:15])
-    losses['transition'] = criterion_cat(preds[:, 15:19], labels[:, 15].long())
-    return losses, sum(losses.values())
+
+def calculate_task_losses(preds, labels, criterion_ord):
+    loss = criterion_ord(preds[:, 0:5], labels[:, 0:5])
+    return {'ctt': loss}, loss
 
 
 def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size):
     model.eval()
     total_loss = 0.0
-    iou_calculators = {
-        'cod': IoUCalculator(5, ordinal=True),
-        'ctt': IoUCalculator(5, ordinal=True),
-        'ctp': IoUCalculator(5, ordinal=True),
-        'transition': IoUCalculator(4)
-    }
+#CTT
+    #iou_calculators = { 'cod': IoUCalculator(5, ordinal=True), 'ctt': IoUCalculator(5, ordinal=True), 'ctp': IoUCalculator(5, ordinal=True), 'transition': IoUCalculator(4) }
+    iou_calculators = {'ctt': IoUCalculator(5, ordinal=True)}
 
     with torch.inference_mode():
         for batch_data, batch_labels in dataloader:

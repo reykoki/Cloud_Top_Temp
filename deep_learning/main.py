@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 #CTT
 #TASKS = { 'cod': (0, 5), 'ctt': (5, 10), 'ctp': (10, 15), 'transition': (15, 19) }
-TASKS = { 'cod': (0, 5), 'ctt': (5, 10), 'ctp': (10, 15)}
+TASKS = {'ctt': (0, 5)}
 
 
 def thermometer_target(truth):
@@ -95,14 +95,19 @@ def setup(rank, world_size):
     torch.backends.cudnn.allow_tf32 = True
     dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
-def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
-    losses = {}
-    losses['cod'] = criterion_ord(preds[:, 0:5], labels[:, 0:5])
-    losses['ctt'] = criterion_ord(preds[:, 5:10], labels[:, 5:10])
-    losses['ctp'] = criterion_ord(preds[:, 10:15], labels[:, 10:15])
+#CTT
+#def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
+#    losses = {}
+#    losses['cod'] = criterion_ord(preds[:, 0:5], labels[:, 0:5])
+#    losses['ctt'] = criterion_ord(preds[:, 5:10], labels[:, 5:10])
+#    losses['ctp'] = criterion_ord(preds[:, 10:15], labels[:, 10:15])
 #    losses['transition'] = criterion_cat(preds[:, 15:19], labels[:, 15].long())
-    return losses, sum(losses.values())
+#    return losses, sum(losses.values())
 
+
+def calculate_task_losses(preds, labels, criterion_ord):
+    loss = criterion_ord(preds[:, 0:5], labels[:, 0:5])
+    return {'ctt': loss}, loss
 
 
 def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size):
@@ -110,7 +115,7 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
     total_loss = 0.0
 #CTT
     #iou_calculators = { 'cod': IoUCalculator(5, ordinal=True), 'ctt': IoUCalculator(5, ordinal=True), 'ctp': IoUCalculator(5, ordinal=True), 'transition': IoUCalculator(4) }
-    iou_calculators = { 'cod': IoUCalculator(5, ordinal=True), 'ctt': IoUCalculator(5, ordinal=True), 'ctp': IoUCalculator(5, ordinal=True)}
+    iou_calculators = {'ctt': IoUCalculator(5, ordinal=True)}
 
     with torch.inference_mode():
         for batch_data, batch_labels in dataloader:
@@ -124,9 +129,14 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
             total_loss += loss.item()
 
 #CTT
-            for task in ['cod', 'ctt', 'ctp']:
+#            for task in ['cod', 'ctt', 'ctp']:
+#                start, end = TASKS[task]
+#                task_idx = ['cod', 'ctt', 'ctp'].index(task)
+#                iou_calculators[task].update(preds[:, start:end, :, :], batch_labels[:, task_idx, :, :])
+
+            for task in ['ctt']:
                 start, end = TASKS[task]
-                task_idx = ['cod', 'ctt', 'ctp'].index(task)
+                task_idx = ['ctt'].index(task)
                 iou_calculators[task].update(preds[:, start:end, :, :], batch_labels[:, task_idx, :, :])
 
 #CTT
@@ -165,7 +175,7 @@ def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
     encoder = cfg['encoder']
     lr = cfg['lr']
 
-    model = smp.create_model(arch=arch, encoder_name=encoder, encoder_weights=None, in_channels=7, classes=15)
+    model = smp.create_model(arch=arch, encoder_name=encoder, encoder_weights=None, in_channels=7, classes=5)
 #CTT
     #model = smp.create_model(arch=arch, encoder_name=encoder, encoder_weights=None, in_channels=7, classes=19)
     model = model.to(rank)

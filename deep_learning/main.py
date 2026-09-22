@@ -54,7 +54,7 @@ class IoUCalculator:
             valid = truth > 0
             pred = pred[valid]
             truth = truth[valid]
-            classes = range(0, self.num_classes + 1)
+            classes = range(self.num_classes)
         else:
             pred = torch.argmax(pred, dim=1)
             classes = range(self.num_classes)

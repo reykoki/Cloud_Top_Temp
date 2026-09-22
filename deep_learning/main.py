@@ -110,7 +110,8 @@ def setup(rank, world_size):
 
 def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
     #loss = criterion_ord(preds[:, 0:5], labels[:, 0:5])
-    loss = criterion_cat(preds[:, 0:5], labels[:, 0:5])
+    #loss = criterion_cat(preds[:, 0:5], labels[:, 0:5])
+    loss = criterion_ord(preds, labels)
     return {'ctt': loss}, loss
 
 
@@ -140,8 +141,7 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
 
             for task in ['ctt']:
                 start, end = TASKS[task]
-                task_idx = ['ctt'].index(task)
-                iou_calculators[task].update(preds[:, start:end, :, :], batch_labels[:, task_idx, :, :])
+                iou_calculators[task].update( preds[:, start:end, :, :], batch_labels.sum(dim=1))
 
 #CTT
 #            start, end = TASKS['transition']

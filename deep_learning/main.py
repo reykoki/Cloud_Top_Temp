@@ -84,7 +84,8 @@ def print_iou(name, intersection, union, ordinal=False):
         #label = i + 1 if ordinal else i
         label = i if ordinal else i
         print(f"{name} class {label} IoU: {'nan' if np.isnan(iou) else f'{iou:.4f}'}")
-    valid = [x for x in ious if not np.isnan(x)]
+    #valid = [x for x in ious if not np.isnan(x)]
+    valid = [x for i, x in enumerate(ious) if i != 0 and not np.isnan(x)]
     mean_iou = np.mean(valid) if valid else float('nan')
     print(f"{name} mean IoU: {'nan' if np.isnan(mean_iou) else f'{mean_iou:.4f}'}")
     return mean_iou

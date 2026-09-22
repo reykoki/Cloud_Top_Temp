@@ -54,7 +54,7 @@ class IoUCalculator:
             valid = truth > 0
             pred = pred[valid]
             truth = truth[valid]
-            classes = range(1, self.num_classes + 1)
+            classes = range(0, self.num_classes + 1)
         else:
             pred = torch.argmax(pred, dim=1)
             classes = range(self.num_classes)
@@ -62,8 +62,10 @@ class IoUCalculator:
         for c in classes:
             pred_c = pred == c
             truth_c = truth == c
-            self.intersection[c - 1 if self.ordinal else c] += (pred_c & truth_c).sum().item()
-            self.union[c - 1 if self.ordinal else c] += (pred_c | truth_c).sum().item()
+            #self.intersection[c - 1 if self.ordinal else c] += (pred_c & truth_c).sum().item()
+            #self.union[c - 1 if self.ordinal else c] += (pred_c | truth_c).sum().item()
+            self.intersection[c] += (pred_c & truth_c).sum().item()
+            self.union[c] += (pred_c | truth_c).sum().item()
 
     def all_reduce(self, rank):
         device = torch.device(f"cuda:{rank}")
@@ -79,7 +81,8 @@ def print_iou(name, intersection, union, ordinal=False):
     for i in range(len(intersection)):
         iou = float('nan') if union[i] == 0 else intersection[i].item() / union[i].item()
         ious.append(iou)
-        label = i + 1 if ordinal else i
+        #label = i + 1 if ordinal else i
+        label = i if ordinal else i
         print(f"{name} class {label} IoU: {'nan' if np.isnan(iou) else f'{iou:.4f}'}")
     valid = [x for x in ious if not np.isnan(x)]
     mean_iou = np.mean(valid) if valid else float('nan')
@@ -105,8 +108,9 @@ def setup(rank, world_size):
 #    return losses, sum(losses.values())
 
 
-def calculate_task_losses(preds, labels, criterion_ord):
-    loss = criterion_ord(preds[:, 0:5], labels[:, 0:5])
+def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
+    #loss = criterion_ord(preds[:, 0:5], labels[:, 0:5])
+    loss = criterion_cat(preds[:, 0:5], labels[:, 0:5])
     return {'ctt': loss}, loss
 
 
@@ -115,7 +119,7 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
     total_loss = 0.0
 #CTT
     #iou_calculators = { 'cod': IoUCalculator(5, ordinal=True), 'ctt': IoUCalculator(5, ordinal=True), 'ctp': IoUCalculator(5, ordinal=True), 'transition': IoUCalculator(4) }
-    iou_calculators = {'ctt': IoUCalculator(5, ordinal=True)}
+    iou_calculators = {'ctt': IoUCalculator(6, ordinal=True)}
 
     with torch.inference_mode():
         for batch_data, batch_labels in dataloader:

@@ -37,6 +37,12 @@ def ordinal_loss(pred, truth, criterion):
     loss = criterion(pred, target)
     return loss[valid.unsqueeze(1).expand_as(loss)].mean()
 
+def collapse_ctt_5_to_3(x):
+    out = torch.zeros_like(x)
+    out[(x == 1) | (x == 2)] = 1
+    out[(x == 3) | (x == 4)] = 2
+    out[x == 5] = 3
+    return out
 
 class IoUCalculator:
     def __init__(self, num_classes, ordinal=False):
@@ -112,7 +118,8 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
     model.eval()
     total_loss = 0.0
 #CTT
-    iou_calculators = { 'cod': IoUCalculator(6, ordinal=True), 'ctt': IoUCalculator(6, ordinal=True), 'ctp': IoUCalculator(6, ordinal=True)}
+    #iou_calculators = { 'cod': IoUCalculator(6, ordinal=True), 'ctt': IoUCalculator(6, ordinal=True), 'ctp': IoUCalculator(6, ordinal=True)}
+    iou_calculators = {'cod': IoUCalculator(6, ordinal=True), 'ctt': IoUCalculator(6, ordinal=True), 'ctt_3': IoUCalculator(4, ordinal=False), 'ctp': IoUCalculator(6, ordinal=True)}
     #iou_calculators = {'ctt': IoUCalculator(6, ordinal=True)}
 
     with torch.inference_mode():
@@ -128,13 +135,26 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
 
 #CTT
 
+#            for task in ['cod', 'ctt', 'ctp']:
+#                start, end = TASKS[task]
+#                iou_calculators[task].update(preds[:, start:end, :, :], batch_labels[:, start:end, :, :].sum(dim=1))
             for task in ['cod', 'ctt', 'ctp']:
                 start, end = TASKS[task]
-                iou_calculators[task].update(preds[:, start:end, :, :], batch_labels[:, start:end, :, :].sum(dim=1))
+                truth = batch_labels[:, start:end, :, :].sum(dim=1)
 
-#CTT
-#            start, end = TASKS['transition']
-#            iou_calculators['transition'].update(preds[:, start:end, :, :], batch_labels[:, 3, :, :])
+                if task == 'ctt':
+                    pred_5 = (torch.sigmoid(preds[:, start:end, :, :]) > 0.5).sum(dim=1)
+                    pred_3 = collapse_ctt_5_to_3(pred_5)
+                    truth_3 = collapse_ctt_5_to_3(truth)
+                    #iou_calculators['ctt_3'].update(pred_3, truth_3)
+                    for c in range(4):
+                        pred_c = pred_3 == c
+                        truth_c = truth_3 == c
+                        iou_calculators['ctt_3'].intersection[c] += (pred_c & truth_c).sum().item()
+                        iou_calculators['ctt_3'].union[c] += (pred_c | truth_c).sum().item()
+                else:
+                    iou_calculators[task].update(preds[:, start:end, :, :], truth)
+
 
     final_loss = total_loss / len(dataloader)
     loss_tensor = torch.tensor([final_loss], device=rank)
@@ -343,7 +363,7 @@ def main(rank, world_size, config_fn):
 
             task_ious = []
             for task, (intersection, union) in iou_results.items():
-                ious = [intersection[i].item() / union[i].item() for i in range(len(intersection)) if union[i] != 0]
+                ious = [intersection[i].item() / union[i].item() for i in range(1, len(intersection)) if union[i] != 0]
                 if ious:
                     task_ious.append(np.mean(ious))
 

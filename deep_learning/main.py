@@ -207,6 +207,7 @@ def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
     optimizer = torch.optim.Adam(list(model.parameters()), lr=lr)
     start_epoch = 0
     best_loss = 0
+    best_iou = 0
     ckpt_pth = None
 
     model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=True)
@@ -229,8 +230,10 @@ def load_model(ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num):
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             start_epoch = checkpoint['epoch']
             best_loss = checkpoint['loss']
+            best_iou = checkpoint['iou']
 
-    return model, optimizer, start_epoch, best_loss
+
+    return model, optimizer, start_epoch, best_loss, best_iou
 
 
 def train_model(train_dataloader, model, criterion_ord, criterion_cat, optimizer, rank, scaler):
@@ -331,7 +334,7 @@ def main(rank, world_size, config_fn):
         else:
             ckpt_loc = cfg['ckpt']
 
-    model, optimizer, start_epoch, best_loss = load_model(
+    model, optimizer, start_epoch, best_loss, best_iou = load_model(
         ckpt_loc, use_ckpt, use_recent, rank, cfg, exp_num
     )
 
@@ -353,7 +356,7 @@ def main(rank, world_size, config_fn):
     )
 
     scaler = torch.cuda.amp.GradScaler()
-    prev_iou = 0
+    prev_iou = best_iou 
 
     for epoch in range(start_epoch, n_epochs):
         if rank == 0:

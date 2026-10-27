@@ -133,27 +133,35 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
 
             total_loss += loss.item()
 
-#CTT
-
-#            for task in ['cod', 'ctt', 'ctp']:
-#                start, end = TASKS[task]
-#                iou_calculators[task].update(preds[:, start:end, :, :], batch_labels[:, start:end, :, :].sum(dim=1))
             for task in ['cod', 'ctt', 'ctp']:
                 start, end = TASKS[task]
                 truth = batch_labels[:, start:end, :, :].sum(dim=1)
 
+                # Original 5-class IoU
+                iou_calculators[task].update(
+                    preds[:, start:end, :, :], truth
+                )
+
+                # Additional collapsed 3-class CTT IoU
                 if task == 'ctt':
                     pred_5 = (torch.sigmoid(preds[:, start:end, :, :]) > 0.5).sum(dim=1)
-                    pred_3 = collapse_ctt_5_to_3(pred_5)
-                    truth_3 = collapse_ctt_5_to_3(truth)
-                    #iou_calculators['ctt_3'].update(pred_3, truth_3)
+
+                    valid = truth > 0
+                    pred_3 = collapse_ctt_5_to_3(pred_5[valid])
+                    truth_3 = collapse_ctt_5_to_3(truth[valid])
+
                     for c in range(4):
                         pred_c = pred_3 == c
                         truth_c = truth_3 == c
-                        iou_calculators['ctt_3'].intersection[c] += (pred_c & truth_c).sum().item()
-                        iou_calculators['ctt_3'].union[c] += (pred_c | truth_c).sum().item()
-                else:
-                    iou_calculators[task].update(preds[:, start:end, :, :], truth)
+
+                        iou_calculators['ctt_3'].intersection[c] += (
+                            pred_c & truth_c
+                        ).sum().item()
+                        iou_calculators['ctt_3'].union[c] += (
+                            pred_c | truth_c
+                        ).sum().item()
+
+
 
 
     final_loss = total_loss / len(dataloader)
@@ -175,7 +183,7 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
                 union,
                 ordinal=(task != 'transition')
             )
-            if not np.isnan(mean_iou):
+            if task != 'ctt_3' and not np.isnan(mean_iou):
                 task_ious.append(mean_iou)
         overall_iou = np.mean(task_ious) if task_ious else 0
         print(f"Overall mean IoU: {overall_iou:.4f}", flush=True)
@@ -363,6 +371,8 @@ def main(rank, world_size, config_fn):
 
             task_ious = []
             for task, (intersection, union) in iou_results.items():
+                if task == 'ctt_3':
+                    continue
                 ious = [intersection[i].item() / union[i].item() for i in range(1, len(intersection)) if union[i] != 0]
                 if ious:
                     task_ious.append(np.mean(ious))

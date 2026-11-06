@@ -73,6 +73,19 @@ class IoUCalculator:
             self.intersection[c] += (pred_c & truth_c).sum().item()
             self.union[c] += (pred_c | truth_c).sum().item()
 
+    def update_collapsed(self, pred, truth):
+        pred = (torch.sigmoid(pred) > 0.5).sum(dim=1)
+
+        valid = truth > 0
+        pred = collapse_ctt_5_to_3(pred[valid])
+        truth = collapse_ctt_5_to_3(truth[valid])
+
+        for c in range(self.num_classes):
+            pred_c = pred == c
+            truth_c = truth == c
+            self.intersection[c] += (pred_c & truth_c).sum().item()
+            self.union[c] += (pred_c | truth_c).sum().item()
+
     def all_reduce(self, rank):
         device = torch.device(f"cuda:{rank}")
         intersection = self.intersection.to(device)
@@ -142,25 +155,10 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
                     preds[:, start:end, :, :], truth
                 )
 
-                # Additional collapsed 3-class CTT IoU
                 if task == 'ctt':
-                    pred_5 = (torch.sigmoid(preds[:, start:end, :, :]) > 0.5).sum(dim=1)
-
-                    valid = truth > 0
-                    pred_3 = collapse_ctt_5_to_3(pred_5[valid])
-                    truth_3 = collapse_ctt_5_to_3(truth[valid])
-
-                    for c in range(4):
-                        pred_c = pred_3 == c
-                        truth_c = truth_3 == c
-
-                        iou_calculators['ctt_3'].intersection[c] += (
-                            pred_c & truth_c
-                        ).sum().item()
-                        iou_calculators['ctt_3'].union[c] += (
-                            pred_c | truth_c
-                        ).sum().item()
-
+                    iou_calculators['ctt_3'].update_collapsed(
+                        preds[:, start:end, :, :], truth
+                    )
 
 
 

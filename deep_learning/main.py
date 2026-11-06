@@ -135,6 +135,8 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
     iou_calculators = {'cod': IoUCalculator(6, ordinal=True), 'ctt': IoUCalculator(6, ordinal=True), 'ctt_3': IoUCalculator(4, ordinal=False), 'ctp': IoUCalculator(6, ordinal=True)}
     #iou_calculators = {'ctt': IoUCalculator(6, ordinal=True)}
 
+    iou_calculators = { 'cod': IoUCalculator(6, ordinal=True), 'cod_3': IoUCalculator(4), 'ctt': IoUCalculator(6, ordinal=True), 'ctt_3': IoUCalculator(4), 'ctp': IoUCalculator(6, ordinal=True), 'ctp_3': IoUCalculator(4) }
+
     with torch.inference_mode():
         for batch_data, batch_labels in dataloader:
             batch_data = batch_data.to(rank, dtype=torch.float32, non_blocking=True)
@@ -155,10 +157,7 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
                     preds[:, start:end, :, :], truth
                 )
 
-                if task == 'ctt':
-                    iou_calculators['ctt_3'].update_collapsed(
-                        preds[:, start:end, :, :], truth
-                    )
+                iou_calculators[f'{task}_3'].update_collapsed( preds[:, start:end, :, :], truth)
 
 
 
@@ -181,7 +180,7 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
                 union,
                 ordinal=(task != 'transition')
             )
-            if task != 'ctt_3' and not np.isnan(mean_iou):
+            if not task.endswith('_3') and not np.isnan(mean_iou):
                 task_ious.append(mean_iou)
         overall_iou = np.mean(task_ious) if task_ious else 0
         print(f"Overall mean IoU: {overall_iou:.4f}", flush=True)
@@ -372,7 +371,7 @@ def main(rank, world_size, config_fn):
 
             task_ious = []
             for task, (intersection, union) in iou_results.items():
-                if task == 'ctt_3':
+                if task.endswith('_3'):
                     continue
                 ious = [intersection[i].item() / union[i].item() for i in range(1, len(intersection)) if union[i] != 0]
                 if ious:

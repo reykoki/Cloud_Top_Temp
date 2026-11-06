@@ -356,7 +356,7 @@ def main(rank, world_size, config_fn):
     )
 
     scaler = torch.cuda.amp.GradScaler()
-    prev_iou = best_iou 
+    prev_iou = best_iou
 
     for epoch in range(start_epoch, n_epochs):
         if rank == 0:

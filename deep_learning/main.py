@@ -37,7 +37,7 @@ def ordinal_loss(pred, truth, criterion):
     loss = criterion(pred, target)
     return loss[valid.unsqueeze(1).expand_as(loss)].mean()
 
-def collapse_ctt_5_to_3(x):
+def collapse_5_to_3(x):
     out = torch.zeros_like(x)
     out[(x == 1) | (x == 2)] = 1
     out[(x == 3) | (x == 4)] = 2
@@ -77,8 +77,8 @@ class IoUCalculator:
         pred = (torch.sigmoid(pred) > 0.5).sum(dim=1)
 
         valid = truth > 0
-        pred = collapse_ctt_5_to_3(pred[valid])
-        truth = collapse_ctt_5_to_3(truth[valid])
+        pred = collapse_5_to_3(pred[valid])
+        truth = collapse_5_to_3(truth[valid])
 
         for c in range(self.num_classes):
             pred_c = pred == c
@@ -130,10 +130,6 @@ def calculate_task_losses(preds, labels, criterion_ord, criterion_cat):
 def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size):
     model.eval()
     total_loss = 0.0
-#CTT
-    #iou_calculators = { 'cod': IoUCalculator(6, ordinal=True), 'ctt': IoUCalculator(6, ordinal=True), 'ctp': IoUCalculator(6, ordinal=True)}
-    iou_calculators = {'cod': IoUCalculator(6, ordinal=True), 'ctt': IoUCalculator(6, ordinal=True), 'ctt_3': IoUCalculator(4, ordinal=False), 'ctp': IoUCalculator(6, ordinal=True)}
-    #iou_calculators = {'ctt': IoUCalculator(6, ordinal=True)}
 
     iou_calculators = { 'cod': IoUCalculator(6, ordinal=True), 'cod_3': IoUCalculator(4), 'ctt': IoUCalculator(6, ordinal=True), 'ctt_3': IoUCalculator(4), 'ctp': IoUCalculator(6, ordinal=True), 'ctp_3': IoUCalculator(4) }
 
@@ -173,6 +169,8 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
     if rank == 0:
         print(f"Validation Loss: {loss_tensor[0].item():.4f}", flush=True)
         task_ious = []
+        task_ious_3 = []
+
         for task, (intersection, union) in results.items():
             mean_iou = print_iou(
                 task.upper(),
@@ -180,10 +178,18 @@ def val_model(dataloader, model, criterion_ord, criterion_cat, rank, world_size)
                 union,
                 ordinal=(task != 'transition')
             )
-            if not task.endswith('_3') and not np.isnan(mean_iou):
-                task_ious.append(mean_iou)
+
+            if not np.isnan(mean_iou):
+                if task.endswith('_3'):
+                    task_ious_3.append(mean_iou)
+                else:
+                    task_ious.append(mean_iou)
+
         overall_iou = np.mean(task_ious) if task_ious else 0
-        print(f"Overall mean IoU: {overall_iou:.4f}", flush=True)
+        overall_iou_3 = np.mean(task_ious_3) if task_ious_3 else 0
+
+        print(f"Overall 5-class mean IoU: {overall_iou:.4f}", flush=True)
+        print(f"Overall 3-class mean IoU: {overall_iou_3:.4f}", flush=True)
 
     return final_loss, results
 
@@ -320,7 +326,7 @@ def main(rank, world_size, config_fn):
         print('num workers:            ', num_workers)
         print('num gpus:               ', world_size)
 
-    use_ckpt = False
+    use_ckpt = True 
     use_recent = False
     ckpt_save_loc = './models/'
     ckpt_loc = None
